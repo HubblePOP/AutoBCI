@@ -211,6 +211,12 @@ def load_prediction_payload(
     payload = read_json(path)
     if only_session_ids is not None:
         payload = filter_sessions_payload(payload, session_ids=only_session_ids)
+    payload.setdefault("run_id", str(result_payload.get("run_id") or Path(str(result_payload.get("result_json", ""))).stem))
+    payload.setdefault(
+        "model_family",
+        str((result_payload.get("train_summary") or {}).get("model_family") or result_payload.get("model_family") or ""),
+    )
+    payload.setdefault("result_json", str(result_payload.get("result_json") or ""))
     return payload
 
 

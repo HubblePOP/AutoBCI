@@ -49,6 +49,7 @@ def build_prediction_payload(
     dataset,
     dataset_config_path: str,
     checkpoint: dict[str, object],
+    checkpoint_path: str,
     session_ids: list[str],
     cache_infos,
     device,
@@ -115,6 +116,7 @@ def build_prediction_payload(
             }
         )
     return {
+        "run_id": Path(checkpoint_path).stem,
         "dataset_name": dataset.dataset_name,
         "dataset_config": str(Path(dataset_config_path).resolve()),
         "split_name": split_name,
@@ -224,6 +226,7 @@ def main() -> None:
             dataset=dataset,
             dataset_config_path=args.dataset_config,
             checkpoint=checkpoint,
+            checkpoint_path=str(checkpoint_path),
             session_ids=test_session_ids,
             cache_infos=cache_infos,
             device=device,
