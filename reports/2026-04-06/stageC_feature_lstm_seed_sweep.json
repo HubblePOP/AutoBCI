@@ -1,0 +1,553 @@
+{
+  "accepted_best_run_id": "stageC_ridge",
+  "accepted_best_val_r": 0.3179927999153733,
+  "accepted_best_test_r": 0.23221144499257207,
+  "best_seed_run_id": "stageC_feature_lstm_seed0",
+  "seed_runs": [
+    {
+      "run_id": "stageC_feature_lstm_seed0",
+      "seed": 0,
+      "val_r": 0.49055525101721287,
+      "test_r": 0.3483052933588624,
+      "test_mae": 8.920005321502686,
+      "test_rmse": 11.474071025848389,
+      "stopped_epoch": 7,
+      "best_epoch": 4,
+      "anomalies": [],
+      "per_dim": [
+        {
+          "name": "Hip",
+          "pearson_r_zero_lag": 0.4835897386074066,
+          "mae": 4.482729911804199,
+          "rmse": 5.757433891296387,
+          "nrmse": 0.872368574142456,
+          "bias": -1.9366024732589722,
+          "gain": 0.5982934236526489,
+          "best_lag_r": 0.4835897386074066,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Kne",
+          "pearson_r_zero_lag": 0.40812021493911743,
+          "mae": 11.830785751342773,
+          "rmse": 15.427926063537598,
+          "nrmse": 0.9735333323478699,
+          "bias": -2.706672430038452,
+          "gain": 0.594005823135376,
+          "best_lag_r": 0.40812021493911743,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Ank",
+          "pearson_r_zero_lag": 0.337709903717041,
+          "mae": 8.271599769592285,
+          "rmse": 10.931965827941895,
+          "nrmse": 0.9183290004730225,
+          "bias": -2.5886337757110596,
+          "gain": 0.5568010807037354,
+          "best_lag_r": 0.337709903717041,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Mtp",
+          "pearson_r_zero_lag": 0.45061153173446655,
+          "mae": 8.44784164428711,
+          "rmse": 10.700968742370605,
+          "nrmse": 0.8316776752471924,
+          "bias": 2.0494015216827393,
+          "gain": 0.5038838982582092,
+          "best_lag_r": 0.45061153173446655,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Sho",
+          "pearson_r_zero_lag": 0.5448539853096008,
+          "mae": 3.735971212387085,
+          "rmse": 4.7200422286987305,
+          "nrmse": 0.9400506615638733,
+          "bias": 1.11455237865448,
+          "gain": 0.7461203932762146,
+          "best_lag_r": 0.5448539853096008,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Elb",
+          "pearson_r_zero_lag": 0.41453537344932556,
+          "mae": 11.051824569702148,
+          "rmse": 14.061511039733887,
+          "nrmse": 0.9272778034210205,
+          "bias": -2.809130907058716,
+          "gain": 0.6284124255180359,
+          "best_lag_r": 0.41453537344932556,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Wri",
+          "pearson_r_zero_lag": 0.393128365278244,
+          "mae": 13.647381782531738,
+          "rmse": 17.544145584106445,
+          "nrmse": 0.9213805198669434,
+          "bias": -3.1390252113342285,
+          "gain": 0.6755014657974243,
+          "best_lag_r": 0.393128365278244,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Mcp",
+          "pearson_r_zero_lag": 0.24697697162628174,
+          "mae": 9.818523406982422,
+          "rmse": 13.230206489562988,
+          "nrmse": 1.2336117029190063,
+          "bias": 5.123952865600586,
+          "gain": 0.27836906909942627,
+          "best_lag_r": 0.24697697162628174,
+          "lag_star_ms": 0.0
+        }
+      ],
+      "severe_compression_count": 1
+    },
+    {
+      "run_id": "stageC_feature_lstm_seed1",
+      "seed": 1,
+      "val_r": 0.42267247335985303,
+      "test_r": 0.39152226597070694,
+      "test_mae": 8.597126960754395,
+      "test_rmse": 11.254388332366943,
+      "stopped_epoch": 6,
+      "best_epoch": 3,
+      "anomalies": [],
+      "per_dim": [
+        {
+          "name": "Hip",
+          "pearson_r_zero_lag": 0.5163630843162537,
+          "mae": 4.610062599182129,
+          "rmse": 5.894789695739746,
+          "nrmse": 0.8931807279586792,
+          "bias": -2.4830901622772217,
+          "gain": 0.6723411083221436,
+          "best_lag_r": 0.5163630843162537,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Kne",
+          "pearson_r_zero_lag": 0.4867464601993561,
+          "mae": 11.069032669067383,
+          "rmse": 14.891319274902344,
+          "nrmse": 0.9396723508834839,
+          "bias": -3.5729212760925293,
+          "gain": 0.6391692757606506,
+          "best_lag_r": 0.4867464601993561,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Ank",
+          "pearson_r_zero_lag": 0.36620891094207764,
+          "mae": 8.121756553649902,
+          "rmse": 10.910079002380371,
+          "nrmse": 0.9164904356002808,
+          "bias": -2.4014229774475098,
+          "gain": 0.6342423558235168,
+          "best_lag_r": 0.36620891094207764,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Mtp",
+          "pearson_r_zero_lag": 0.5157163739204407,
+          "mae": 7.900905132293701,
+          "rmse": 10.221877098083496,
+          "nrmse": 0.7944427728652954,
+          "bias": 0.4367767572402954,
+          "gain": 0.6645190715789795,
+          "best_lag_r": 0.5157163739204407,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Sho",
+          "pearson_r_zero_lag": 0.5757755041122437,
+          "mae": 4.039188861846924,
+          "rmse": 5.0809006690979,
+          "nrmse": 1.0119197368621826,
+          "bias": 2.578364133834839,
+          "gain": 0.671111524105072,
+          "best_lag_r": 0.5757755041122437,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Elb",
+          "pearson_r_zero_lag": 0.4731792211532593,
+          "mae": 10.095983505249023,
+          "rmse": 13.316904067993164,
+          "nrmse": 0.8781751394271851,
+          "bias": -0.5117775797843933,
+          "gain": 0.6708541512489319,
+          "best_lag_r": 0.4731792211532593,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Wri",
+          "pearson_r_zero_lag": 0.4765506386756897,
+          "mae": 12.305148124694824,
+          "rmse": 16.40304183959961,
+          "nrmse": 0.8614522218704224,
+          "bias": -0.49081093072891235,
+          "gain": 0.7252413630485535,
+          "best_lag_r": 0.4765506386756897,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Mcp",
+          "pearson_r_zero_lag": 0.29044610261917114,
+          "mae": 9.600595474243164,
+          "rmse": 13.074695587158203,
+          "nrmse": 1.2191115617752075,
+          "bias": 5.094831943511963,
+          "gain": 0.3100038766860962,
+          "best_lag_r": 0.29044610261917114,
+          "lag_star_ms": 0.0
+        }
+      ],
+      "severe_compression_count": 1
+    },
+    {
+      "run_id": "stageC_feature_lstm_seed2",
+      "seed": 2,
+      "val_r": 0.4091313830576837,
+      "test_r": 0.30867461976595223,
+      "test_mae": 9.099462985992432,
+      "test_rmse": 11.524077415466309,
+      "stopped_epoch": 5,
+      "best_epoch": 2,
+      "anomalies": [],
+      "per_dim": [
+        {
+          "name": "Hip",
+          "pearson_r_zero_lag": 0.5074666738510132,
+          "mae": 4.470612049102783,
+          "rmse": 5.664638519287109,
+          "nrmse": 0.8583081364631653,
+          "bias": -1.9584977626800537,
+          "gain": 0.5878440141677856,
+          "best_lag_r": 0.5074666738510132,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Kne",
+          "pearson_r_zero_lag": 0.42561766505241394,
+          "mae": 11.828004837036133,
+          "rmse": 15.302300453186035,
+          "nrmse": 0.9656060934066772,
+          "bias": -3.5907883644104004,
+          "gain": 0.5425450205802917,
+          "best_lag_r": 0.42561766505241394,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Ank",
+          "pearson_r_zero_lag": 0.30353251099586487,
+          "mae": 8.362996101379395,
+          "rmse": 11.069599151611328,
+          "nrmse": 0.9298907518386841,
+          "bias": -2.3772530555725098,
+          "gain": 0.5481723546981812,
+          "best_lag_r": 0.30353251099586487,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Mtp",
+          "pearson_r_zero_lag": 0.4729262590408325,
+          "mae": 8.10991382598877,
+          "rmse": 10.417878150939941,
+          "nrmse": 0.809675931930542,
+          "bias": -0.042998168617486954,
+          "gain": 0.5755974650382996,
+          "best_lag_r": 0.4729262590408325,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Sho",
+          "pearson_r_zero_lag": 0.5530833005905151,
+          "mae": 3.9691426753997803,
+          "rmse": 4.91513204574585,
+          "nrmse": 0.9789050221443176,
+          "bias": 1.9361129999160767,
+          "gain": 0.7185910940170288,
+          "best_lag_r": 0.5530833005905151,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Elb",
+          "pearson_r_zero_lag": 0.36420518159866333,
+          "mae": 11.32965087890625,
+          "rmse": 14.658370971679688,
+          "nrmse": 0.966637372970581,
+          "bias": -1.7802784442901611,
+          "gain": 0.6916184425354004,
+          "best_lag_r": 0.36420518159866333,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Wri",
+          "pearson_r_zero_lag": 0.4051540195941925,
+          "mae": 12.867839813232422,
+          "rmse": 16.98309898376465,
+          "nrmse": 0.8919155597686768,
+          "bias": -3.082611083984375,
+          "gain": 0.5791404843330383,
+          "best_lag_r": 0.4051540195941925,
+          "lag_star_ms": 0.0
+        },
+        {
+          "name": "Mcp",
+          "pearson_r_zero_lag": 0.04446902871131897,
+          "mae": 10.805306434631348,
+          "rmse": 13.301252365112305,
+          "nrmse": 1.2402361631393433,
+          "bias": 2.602991819381714,
+          "gain": 0.3218499720096588,
+          "best_lag_r": 0.07915479689836502,
+          "lag_star_ms": 1000.0
+        }
+      ],
+      "severe_compression_count": 1
+    }
+  ],
+  "aggregates": {
+    "val_r": {
+      "count": 3,
+      "mean": 0.44078636914491653,
+      "median": 0.42267247335985303,
+      "std": 0.035623461218292796
+    },
+    "test_r": {
+      "count": 3,
+      "mean": 0.3495007263651739,
+      "median": 0.3483052933588624,
+      "std": 0.03383297125065514
+    },
+    "test_mae": {
+      "count": 3,
+      "mean": 8.872198422749838,
+      "median": 8.920005321502686,
+      "std": 0.2078452873962767
+    },
+    "test_rmse": {
+      "count": 3,
+      "mean": 11.41751225789388,
+      "median": 11.474071025848389,
+      "std": 0.11713872419811487
+    },
+    "severe_compression_count": {
+      "count": 3,
+      "mean": 1.0,
+      "median": 1.0,
+      "std": 0.0
+    }
+  },
+  "accepted_best_severe_compression_count": 4,
+  "per_joint_median": [
+    {
+      "name": "Ank",
+      "pearson_r_zero_lag": 0.337709903717041,
+      "pearson_r_zero_lag_mean": 0.3358171085516612,
+      "pearson_r_zero_lag_std": 0.025622513312943743,
+      "mae": 8.271599769592285,
+      "mae_mean": 8.252117474873861,
+      "mae_std": 0.09944445586290586,
+      "rmse": 10.931965827941895,
+      "rmse_mean": 10.970547993977865,
+      "rmse_std": 0.07060739883178944,
+      "gain": 0.5568010807037354,
+      "gain_mean": 0.5797385970751444,
+      "gain_std": 0.03870063321097229,
+      "bias": -2.4014229774475098,
+      "bias_mean": -2.455769936243693,
+      "bias_std": 0.09446567686861548,
+      "gain_status": "moderate compression",
+      "severe_count": 0
+    },
+    {
+      "name": "Elb",
+      "pearson_r_zero_lag": 0.41453537344932556,
+      "pearson_r_zero_lag_mean": 0.4173065920670827,
+      "pearson_r_zero_lag_std": 0.044531599744317994,
+      "mae": 11.051824569702148,
+      "mae_mean": 10.825819651285807,
+      "mae_std": 0.5283890388516543,
+      "rmse": 14.061511039733887,
+      "rmse_mean": 14.012262026468912,
+      "rmse_std": 0.5487576650351575,
+      "gain": 0.6708541512489319,
+      "gain_mean": 0.663628339767456,
+      "gain_std": 0.026304744951867697,
+      "bias": -1.7802784442901611,
+      "bias_mean": -1.70039564371109,
+      "bias_std": 0.9395899899977177,
+      "gain_status": "moderate compression",
+      "severe_count": 0
+    },
+    {
+      "name": "Hip",
+      "pearson_r_zero_lag": 0.5074666738510132,
+      "pearson_r_zero_lag_mean": 0.5024731655915579,
+      "pearson_r_zero_lag_std": 0.013837735623789451,
+      "mae": 4.482729911804199,
+      "mae_mean": 4.521134853363037,
+      "mae_std": 0.06307571445736909,
+      "rmse": 5.757433891296387,
+      "rmse_mean": 5.772287368774414,
+      "rmse_std": 0.09454402977987163,
+      "gain": 0.5982934236526489,
+      "gain_mean": 0.6194928487141927,
+      "gain_std": 0.03761206763205673,
+      "bias": -1.9584977626800537,
+      "bias_mean": -2.1260634660720825,
+      "bias_std": 0.25261419500505217,
+      "gain_status": "moderate compression",
+      "severe_count": 0
+    },
+    {
+      "name": "Kne",
+      "pearson_r_zero_lag": 0.42561766505241394,
+      "pearson_r_zero_lag_mean": 0.44016144673029584,
+      "pearson_r_zero_lag_std": 0.033706209121873665,
+      "mae": 11.828004837036133,
+      "mae_mean": 11.57594108581543,
+      "mae_std": 0.3584401768762387,
+      "rmse": 15.302300453186035,
+      "rmse_mean": 15.207181930541992,
+      "rmse_std": 0.2291613135105909,
+      "gain": 0.594005823135376,
+      "gain_mean": 0.5919067064921061,
+      "gain_std": 0.03947460272378784,
+      "bias": -3.5729212760925293,
+      "bias_mean": -3.2901273568471274,
+      "bias_std": 0.41262941155814137,
+      "gain_status": "moderate compression",
+      "severe_count": 0
+    },
+    {
+      "name": "Mcp",
+      "pearson_r_zero_lag": 0.24697697162628174,
+      "pearson_r_zero_lag_mean": 0.19396403431892395,
+      "pearson_r_zero_lag_std": 0.10718817989415508,
+      "mae": 9.818523406982422,
+      "mae_mean": 10.074808438618978,
+      "mae_std": 0.524146059542292,
+      "rmse": 13.230206489562988,
+      "rmse_mean": 13.202051480611166,
+      "rmse_std": 0.09460980148675203,
+      "gain": 0.3100038766860962,
+      "gain_mean": 0.3034076392650604,
+      "gain_std": 0.01835356442326252,
+      "bias": 5.094831943511963,
+      "bias_mean": 4.273925542831421,
+      "bias_std": 1.181588376761538,
+      "gain_status": "severe compression",
+      "severe_count": 3
+    },
+    {
+      "name": "Mtp",
+      "pearson_r_zero_lag": 0.4729262590408325,
+      "pearson_r_zero_lag_mean": 0.47975138823191327,
+      "pearson_r_zero_lag_std": 0.027013538708967836,
+      "mae": 8.10991382598877,
+      "mae_mean": 8.152886867523193,
+      "mae_std": 0.2253440314451341,
+      "rmse": 10.417878150939941,
+      "rmse_mean": 10.446907997131348,
+      "rmse_std": 0.19666257038195153,
+      "gain": 0.5755974650382996,
+      "gain_mean": 0.5813334782918295,
+      "gain_std": 0.06570434340276132,
+      "bias": 0.4367767572402954,
+      "bias_mean": 0.8143933701018492,
+      "bias_std": 0.8949785270138776,
+      "gain_status": "moderate compression",
+      "severe_count": 0
+    },
+    {
+      "name": "Sho",
+      "pearson_r_zero_lag": 0.5530833005905151,
+      "pearson_r_zero_lag_mean": 0.5579042633374532,
+      "pearson_r_zero_lag_std": 0.013075838854443767,
+      "mae": 3.9691426753997803,
+      "mae_mean": 3.914767583211263,
+      "mae_std": 0.12962181844085185,
+      "rmse": 4.91513204574585,
+      "rmse_mean": 4.90535831451416,
+      "rmse_std": 0.14748185847412396,
+      "gain": 0.7185910940170288,
+      "gain_mean": 0.7119410037994385,
+      "gain_std": 0.030981181261210425,
+      "bias": 1.9361129999160767,
+      "bias_mean": 1.8763431708017986,
+      "bias_std": 0.5990912774112213,
+      "gain_status": "moderate compression",
+      "severe_count": 0
+    },
+    {
+      "name": "Wri",
+      "pearson_r_zero_lag": 0.4051540195941925,
+      "pearson_r_zero_lag_mean": 0.42494434118270874,
+      "pearson_r_zero_lag_std": 0.03681993614092065,
+      "mae": 12.867839813232422,
+      "mae_mean": 12.940123240152994,
+      "mae_std": 0.550343207106924,
+      "rmse": 16.98309898376465,
+      "rmse_mean": 16.976762135823567,
+      "rmse_std": 0.4658752019323429,
+      "gain": 0.6755014657974243,
+      "gain_mean": 0.6599611043930054,
+      "gain_std": 0.06064923090909113,
+      "bias": -3.082611083984375,
+      "bias_mean": -2.237482408682505,
+      "bias_std": 1.2352979606458254,
+      "gain_status": "moderate compression",
+      "severe_count": 0
+    }
+  ],
+  "sentinel_joints": [
+    {
+      "name": "Kne",
+      "accepted_gain": 0.4637368619441986,
+      "candidate_gain": 0.594005823135376,
+      "accepted_gain_distance": 0.5362631380558014,
+      "candidate_gain_distance": 0.405994176864624,
+      "improved": true
+    },
+    {
+      "name": "Wri",
+      "accepted_gain": 0.5035474300384521,
+      "candidate_gain": 0.6755014657974243,
+      "accepted_gain_distance": 0.49645256996154785,
+      "candidate_gain_distance": 0.3244985342025757,
+      "improved": true
+    },
+    {
+      "name": "Mcp",
+      "accepted_gain": 0.30870094895362854,
+      "candidate_gain": 0.3100038766860962,
+      "accepted_gain_distance": 0.6912990510463715,
+      "candidate_gain_distance": 0.6899961233139038,
+      "improved": false
+    }
+  ],
+  "gate": {
+    "passed": true,
+    "checks": {
+      "all_seeds_completed": true,
+      "all_val_above_ridge": true,
+      "median_val_threshold": true,
+      "median_test_not_worse": true,
+      "no_anomalies": true,
+      "sentinel_gain_improved": true,
+      "severe_compression_guard": true
+    },
+    "failed_reasons": [],
+    "thresholds": {
+      "min_formal_val": 0.368,
+      "min_gain_improvement": 0.05,
+      "max_extra_severe_joints": 1
+    }
+  }
+}
