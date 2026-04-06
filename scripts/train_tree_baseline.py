@@ -18,9 +18,27 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import train_lstm as train_shared
 import train_ridge as ridge_shared
-from bci_autoresearch.data.runtime_splits import experiment_track_name, resolve_split_session_ids
+from bci_autoresearch.data.runtime_splits import (
+    apply_signal_artifact_probe,
+    apply_target_artifact_probe,
+    experiment_track_name,
+    resolve_split_session_ids,
+    resolve_split_target_indices,
+)
+from bci_autoresearch.data.session_cache import load_session_cache
 from bci_autoresearch.data.splits import load_dataset_config, scan_dataset_caches
-from bci_autoresearch.features import normalize_signal_preprocess, parse_feature_families
+from bci_autoresearch.features import (
+    build_feature_sequence,
+    normalize_signal_preprocess,
+    parse_feature_families,
+    slice_feature_window,
+)
+
+
+def evaluation_mode_from_track(track: str | None) -> str:
+    if track == "within_session_upper_bound":
+        return "upper_bound_same_session"
+    return "cross_session_mainline"
 
 
 def parse_args() -> argparse.Namespace:
@@ -76,6 +94,120 @@ def build_estimator(args: argparse.Namespace):
     )
 
 
+def build_session_rows(
+    *,
+    dataset,
+    split_name: str,
+    session_id: str,
+    cache_infos,
+    target_dim_indices: np.ndarray,
+    target_kin_names: list[str],
+    relative_origin_marker: str | None,
+    window_samples: int,
+    stride_samples: int,
+    pred_horizon_samples: int,
+    feature_bin_samples: int,
+    feature_reducers: tuple[str, ...],
+    signal_preprocess: str,
+    feature_families: tuple[str, ...],
+    artifact_probe: str,
+    artifact_shift_seconds: float,
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[dict[str, object]]]:
+    cache = load_session_cache(cache_infos[session_id].cache_path)
+    session_ecog = apply_signal_artifact_probe(cache.ecog_uV, artifact_probe=artifact_probe)
+    target_matrix = train_shared.build_target_matrix(
+        kinematics=cache.kinematics,
+        kin_names=cache.kin_names,
+        target_dim_indices=target_dim_indices,
+        relative_origin_marker=relative_origin_marker,
+    )
+    shift_samples = int(round(cache.fs_ecog * artifact_shift_seconds))
+    target_matrix = apply_target_artifact_probe(
+        target_matrix,
+        artifact_probe=artifact_probe,
+        session_id=session_id,
+        seed=seed,
+        shift_samples=shift_samples,
+    )
+    target_indices = resolve_split_target_indices(
+        dataset=dataset,
+        split_name=split_name,
+        session_id=session_id,
+        t_total=cache.ecog_uV.shape[1],
+        t_ecog_s=cache.t_ecog_s,
+        window_samples=window_samples,
+        stride_samples=stride_samples,
+        pred_horizon_samples=pred_horizon_samples,
+    )
+    feature_sequence = build_feature_sequence(
+        ecog_uV=session_ecog,
+        channel_names=cache.channel_names,
+        fs_hz=cache.fs_ecog,
+        bin_samples=feature_bin_samples,
+        signal_preprocess=signal_preprocess,
+        feature_families=feature_families,
+        feature_reducers=feature_reducers,
+    )
+    x_rows: list[np.ndarray] = []
+    y_rows: list[np.ndarray] = []
+    time_rows: list[float] = []
+    feature_sum = 0.0
+    feature_sq_sum = 0.0
+    feature_count = 0
+    window_count = 0
+    target_sum = np.zeros(len(target_kin_names), dtype=np.float64)
+    target_sq_sum = np.zeros(len(target_kin_names), dtype=np.float64)
+
+    for target_idx in target_indices:
+        x_end = int(target_idx) - pred_horizon_samples
+        x_start = x_end - window_samples
+        if x_end > feature_sequence.usable_samples:
+            continue
+        feature_window = slice_feature_window(feature_sequence, x_start=x_start, x_end=x_end)
+        y_value = target_matrix[int(target_idx)].astype(np.float32)
+        x_rows.append(feature_window.reshape(-1).astype(np.float32))
+        y_rows.append(y_value)
+        time_rows.append(float(cache.t_ecog_s[int(target_idx)]))
+        feature_sum += float(feature_window.sum(dtype=np.float64))
+        feature_sq_sum += float(np.square(feature_window.astype(np.float64)).sum())
+        feature_count += int(feature_window.size)
+        window_count += 1
+        target_sum += y_value.astype(np.float64)
+        target_sq_sum += np.square(y_value.astype(np.float64))
+
+    session_qc_rows: list[dict[str, object]] = []
+    if feature_count > 0:
+        session_qc_rows.append(
+            ridge_shared.summarize_session_qc(
+                session_id=session_id,
+                split_name=split_name,
+                feature_sum=feature_sum,
+                feature_sq_sum=feature_sq_sum,
+                feature_count=feature_count,
+                target_sum=target_sum,
+                target_sq_sum=target_sq_sum,
+                target_count=window_count,
+                target_names=target_kin_names,
+            )
+        )
+
+    if not x_rows:
+        return (
+            np.empty((0, 0), dtype=np.float32),
+            np.empty((0, len(target_kin_names)), dtype=np.float32),
+            np.empty((0,), dtype=np.float32),
+            session_qc_rows,
+        )
+
+    return (
+        np.stack(x_rows, axis=0).astype(np.float32),
+        np.stack(y_rows, axis=0).astype(np.float32),
+        np.asarray(time_rows, dtype=np.float32),
+        session_qc_rows,
+    )
+
+
 def predict_split(
     *,
     estimator,
@@ -99,18 +231,19 @@ def predict_split(
     x_scaler: train_shared.Standardizer,
     y_scaler: train_shared.Standardizer,
     max_lag_ms: float,
-) -> tuple[dict[str, object], list[dict[str, object]]]:
+) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]]:
     lag_step_ms = 1000.0 * stride_samples / cache_infos[session_ids[0]].fs_ecog
     session_metrics = []
     pooled_true: list[np.ndarray] = []
     pooled_pred: list[np.ndarray] = []
     split_qc_rows: list[dict[str, object]] = []
+    prediction_sessions: list[dict[str, object]] = []
 
     for session_id in session_ids:
-        x_rows, y_rows, session_qc_rows = ridge_shared.build_split_rows(
+        x_rows, y_rows, time_s, session_qc_rows = build_session_rows(
             dataset=dataset,
             split_name=split_name,
-            session_ids=[session_id],
+            session_id=session_id,
             cache_infos=cache_infos,
             target_dim_indices=target_dim_indices,
             target_kin_names=target_kin_names,
@@ -126,9 +259,21 @@ def predict_split(
             artifact_shift_seconds=artifact_shift_seconds,
             seed=seed,
         )
+        if x_rows.size == 0:
+            split_qc_rows.extend(session_qc_rows)
+            continue
         x_z = x_scaler.transform(x_rows).astype(np.float32)
         y_true = y_rows.astype(np.float32)
         y_pred = y_scaler.inverse_transform(estimator.predict(x_z).astype(np.float32)).astype(np.float32)
+        prediction_sessions.append(
+            {
+                "session_id": session_id,
+                "time_s": time_s.astype(np.float32).tolist(),
+                "target_names": list(target_kin_names),
+                "y_true": y_true.astype(np.float32).tolist(),
+                "y_pred": y_pred.astype(np.float32).tolist(),
+            }
+        )
         session_metrics.append(
             ridge_shared.compute_session_metrics(
                 session_id=session_id,
@@ -153,7 +298,7 @@ def predict_split(
         lag_step_ms=lag_step_ms,
         max_lag_ms=max_lag_ms,
     )
-    return metrics, split_qc_rows
+    return metrics, split_qc_rows, prediction_sessions
 
 
 def main() -> None:
@@ -221,7 +366,7 @@ def main() -> None:
     estimator = build_estimator(args)
     estimator.fit(x_train_z, y_train_z)
 
-    val_metrics, val_qc_rows = predict_split(
+    val_metrics, val_qc_rows, _ = predict_split(
         estimator=estimator,
         dataset=dataset,
         split_name="val",
@@ -249,7 +394,7 @@ def main() -> None:
     test_metrics = None
     test_qc_rows: list[dict[str, object]] = []
     if args.final_eval:
-        test_metrics, test_qc_rows = predict_split(
+        test_metrics, test_qc_rows, test_prediction_sessions = predict_split(
             estimator=estimator,
             dataset=dataset,
             split_name="test",
@@ -273,6 +418,8 @@ def main() -> None:
             max_lag_ms=max_lag_ms,
         )
         train_shared.add_target_space_metric_aliases(test_metrics, target_space=target_spec.space)
+    else:
+        test_prediction_sessions = []
 
     feature_names = ridge_shared.build_feature_sequence(
         ecog_uV=np.zeros((reference_info.n_channels, feature_bin_samples * 2), dtype=np.float32),
@@ -328,7 +475,10 @@ def main() -> None:
     train_shared.save_checkpoint(checkpoint, best_checkpoint_path)
     train_shared.save_checkpoint(checkpoint, last_checkpoint_path)
 
+    out_path = Path(args.output_json)
+    experiment_track = experiment_track_name(dataset)
     metrics: dict[str, object] = {
+        "run_id": out_path.stem,
         "dataset_name": dataset.dataset_name,
         "dataset_config": str(Path(args.dataset_config).resolve()),
         "device": "cpu",
@@ -341,7 +491,11 @@ def main() -> None:
         "target_names": target_kin_names,
         "target_axes": list(target_spec.axes),
         "relative_origin_marker": args.relative_origin_marker,
-        "experiment_track": experiment_track_name(dataset),
+        "experiment_track": experiment_track,
+        "evaluation_mode": evaluation_mode_from_track(experiment_track),
+        "model_family": args.model_family,
+        "feature_family": "+".join(feature_families),
+        "feature_reducers": list(feature_reducers),
         "best_checkpoint_path": str(best_checkpoint_path),
         "last_checkpoint_path": str(last_checkpoint_path),
         "primary_metric": "val_metrics.mean_pearson_r_zero_lag_macro",
@@ -393,9 +547,22 @@ def main() -> None:
         },
     }
     if test_metrics is not None:
+        prediction_payload_path = out_path.with_name(f"{out_path.stem}_prediction_payload.json")
+        prediction_payload = {
+            "run_id": out_path.stem,
+            "model_family": args.model_family,
+            "dataset_name": dataset.dataset_name,
+            "dataset_config": str(Path(args.dataset_config).resolve()),
+            "split_name": "test",
+            "feature_family": "+".join(feature_families),
+            "feature_reducers": list(feature_reducers),
+            "sessions": test_prediction_sessions,
+        }
+        with open(prediction_payload_path, "w", encoding="utf-8") as handle:
+            json.dump(prediction_payload, handle, ensure_ascii=False, indent=2)
         metrics["test_metrics"] = test_metrics
+        metrics["prediction_payload_path"] = str(prediction_payload_path)
 
-    out_path = Path(args.output_json)
     print(json.dumps(metrics, indent=2, ensure_ascii=False))
     train_shared.save_metrics(metrics, out_path)
 

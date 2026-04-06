@@ -82,6 +82,9 @@ interface CampaignStatus {
   max_iterations: number;
   patience: number;
   stage: Stage;
+  frozen_baseline: AcceptedBestSnapshot;
+  accepted_stable_best: AcceptedBestSnapshot;
+  leading_unverified_candidate: AcceptedBestSnapshot;
   accepted_best: AcceptedBestSnapshot;
   candidate: CandidateSnapshot;
   current_command: string;
@@ -261,7 +264,7 @@ async function main() {
     return;
   }
 
-  if (status.accepted_best.run_id === "") {
+  if (status.accepted_stable_best.run_id === "") {
     await initializeBaseline({
       status,
       baselineMetricsPath,
@@ -309,7 +312,7 @@ async function main() {
   let consecutiveFailures = status.patience_streak ?? 0;
 
   while (status.current_iteration < status.max_iterations && consecutiveFailures < consecutiveLimit) {
-    const parentRunId = status.accepted_best.run_id || null;
+    const parentRunId = status.accepted_stable_best.run_id || null;
     const iteration = status.current_iteration + 1;
     const runId = `${campaignId}-iter-${String(iteration).padStart(3, "0")}`;
     const smokeOutputPath = path.join(smokeOutputDir, `${runId}_smoke.json`);
@@ -437,7 +440,7 @@ async function main() {
         decision = smokeRun.exitCode === 0 ? "reject_missing_metrics" : "reject_smoke_failed";
         nextStep = "先把 smoke 命令跑通，再继续。";
         status.last_error = smokeRun.exitCode === 0 ? "smoke metrics missing" : (smokeRun.stderr.trim() || smokeRun.stdout.trim() || "smoke command failed");
-      } else if (isBetterThan(smokeMetrics.val_primary_metric, status.accepted_best.val_primary_metric)) {
+      } else if (isBetterThan(smokeMetrics.val_primary_metric, status.accepted_stable_best.val_primary_metric)) {
         status.stage = "formal_eval";
         const formalCommandLine = ensureOutputJson(formalCommand, formalOutputPath);
         status.current_command = formalCommandLine;
@@ -461,15 +464,18 @@ async function main() {
           decision = formalRun.exitCode === 0 ? "rollback_missing_formal_metrics" : "rollback_formal_failed";
           nextStep = "formal 没过，回到 smoke 再换一个候选。";
           status.last_error = formalRun.exitCode === 0 ? "formal metrics missing" : (formalRun.stderr.trim() || formalRun.stdout.trim() || "formal command failed");
-        } else if (isBetterThan(finalMetrics.val_primary_metric, status.accepted_best.val_primary_metric)) {
-          status.accepted_best = buildAcceptedBest({
+        } else if (isBetterThan(finalMetrics.val_primary_metric, status.accepted_stable_best.val_primary_metric)) {
+          await restoreSnapshot(snapshot, touchedFiles);
+          rollbackApplied = true;
+          status.leading_unverified_candidate = buildAcceptedBest({
             runId,
             primaryMetricName: smokeMetrics.primary_metric_name,
             smokeMetrics,
             formalMetrics: finalMetrics,
           });
-          decision = "accept";
-          nextStep = "继续下一轮 smoke 候选。";
+          syncAcceptedBestAlias(status);
+          decision = "hold_for_packet_gate";
+          nextStep = "formal 超过 stable best，先记成未复验候选，再跑 packet gate。";
         } else {
           await restoreSnapshot(snapshot, touchedFiles);
           rollbackApplied = true;
@@ -492,6 +498,11 @@ async function main() {
       status.patience_streak = 0;
       status.stage = "accepted";
       status.last_error = null;
+    } else if (decision === "hold_for_packet_gate") {
+      consecutiveFailures = 0;
+      status.patience_streak = 0;
+      status.stage = "formal_eval";
+      status.last_error = null;
     } else {
       consecutiveFailures += 1;
       status.patience_streak = consecutiveFailures;
@@ -508,6 +519,8 @@ async function main() {
       run_id: runId,
       stage: decision === "accept"
         ? "accepted"
+        : decision === "hold_for_packet_gate"
+          ? "formal_eval"
         : rollbackApplied
           ? "rollback"
           : finalMetrics
@@ -604,6 +617,10 @@ async function initializeBaseline({
     smokeMetrics: summary,
     formalMetrics: null,
   });
+  status.frozen_baseline = { ...status.accepted_best };
+  status.accepted_stable_best = { ...status.accepted_best };
+  status.leading_unverified_candidate = normalizeAcceptedBest(null);
+  syncAcceptedBestAlias(status);
   status.stage = "smoke";
   status.current_command = baselineCommandUsed;
   status.candidate = buildEmptyCandidate(`${status.campaign_id}-baseline`);
@@ -746,7 +763,18 @@ function buildInitialStatus({
       max_iterations: Number(existingStatus.max_iterations ?? maxIterations),
       patience: Number(existingStatus.patience ?? patience),
       stage: normalizeStage(existingStatus.stage),
-      accepted_best: normalizeAcceptedBest(existingStatus.accepted_best),
+      frozen_baseline: normalizeAcceptedBest(
+        (existingStatus as Record<string, unknown>).frozen_baseline ?? existingStatus.accepted_best,
+      ),
+      accepted_stable_best: normalizeAcceptedBest(
+        (existingStatus as Record<string, unknown>).accepted_stable_best ?? existingStatus.accepted_best,
+      ),
+      leading_unverified_candidate: normalizeAcceptedBest(
+        (existingStatus as Record<string, unknown>).leading_unverified_candidate,
+      ),
+      accepted_best: normalizeAcceptedBest(
+        (existingStatus as Record<string, unknown>).accepted_stable_best ?? existingStatus.accepted_best,
+      ),
       candidate: normalizeCandidate(existingStatus.candidate),
       current_command: String(existingStatus.current_command ?? ""),
       updated_at: new Date().toISOString(),
@@ -762,6 +790,9 @@ function buildInitialStatus({
     max_iterations: maxIterations,
     patience,
     stage: "baseline",
+    frozen_baseline: normalizeAcceptedBest(null),
+    accepted_stable_best: normalizeAcceptedBest(null),
+    leading_unverified_candidate: normalizeAcceptedBest(null),
     accepted_best: {
       run_id: "",
       dataset_name: "",
@@ -812,6 +843,10 @@ function normalizeMetricSnapshot(value: unknown): MetricSnapshot | null {
     evaluation_mode: typeof record.evaluation_mode === "string" ? record.evaluation_mode : null,
     artifacts: parseStringArray(record.artifacts),
   };
+}
+
+function syncAcceptedBestAlias(status: CampaignStatus) {
+  status.accepted_best = { ...status.accepted_stable_best };
 }
 
 function normalizeStage(value: unknown): Stage {
@@ -1002,8 +1037,8 @@ async function runCodexEditTurn({
     `campaign_id: ${campaignId}`,
     `iteration: ${iteration}`,
     `current_stage: ${status.stage}`,
-    `current_best_metric: ${status.accepted_best.val_primary_metric ?? "null"}`,
-    `current_best_source: ${status.accepted_best.artifacts[0] ?? ""}`,
+    `current_best_metric: ${status.accepted_stable_best.val_primary_metric ?? "null"}`,
+    `current_best_source: ${status.accepted_stable_best.artifacts[0] ?? ""}`,
     `smoke_command: ${smokeCommand}`,
     `formal_command: ${formalCommand}`,
     "",
@@ -1290,10 +1325,10 @@ async function recordIteration({
     stage: status.stage,
     recorded_at: new Date().toISOString(),
     agent_name: DEFAULT_AGENT_NAME,
-    dataset_name: status.accepted_best.dataset_name,
-    target_mode: status.accepted_best.target_mode,
-    target_space: status.accepted_best.target_space,
-    primary_metric_name: status.accepted_best.primary_metric_name || DEFAULT_PRIMARY_METRIC_NAME,
+    dataset_name: status.accepted_stable_best.dataset_name,
+    target_mode: status.accepted_stable_best.target_mode,
+    target_space: status.accepted_stable_best.target_space,
+    primary_metric_name: status.accepted_stable_best.primary_metric_name || DEFAULT_PRIMARY_METRIC_NAME,
     hypothesis,
     why_this_change: whyThisChange,
     changes_summary: changesSummary,
@@ -1488,6 +1523,7 @@ async function readJsonIfExists<T>(filePath: string): Promise<T | null> {
 }
 
 async function writeStatus(status: CampaignStatus) {
+  syncAcceptedBestAlias(status);
   const tmpPath = `${STATUS_PATH}.${process.pid}.tmp`;
   await mkdir(path.dirname(STATUS_PATH), { recursive: true });
   await writeFile(tmpPath, `${JSON.stringify(status, null, 2)}\n`, "utf8");

@@ -699,7 +699,7 @@
       <div>
         <div class="eyebrow">BCI Research Monitor</div>
         <h1>Joint Angle AutoResearch</h1>
-        <div class="sub" id="hero-sub">当前主线显示第二个 sheet 的关节角，页面同时显示 accepted best、当前 candidate 和多关节时间曲线。</div>
+        <div class="sub" id="hero-sub">当前主线显示第二个 sheet 的关节角，页面同时显示 frozen baseline、stable best、当前候选和多关节时间曲线。</div>
       </div>
       <div class="hero-side">
         <div class="status-strip">
@@ -714,8 +714,10 @@
         </div>
         <div class="status-strip">
           <div>
-            <div class="status-title">Accepted Best</div>
+            <div class="status-title">主线状态</div>
+            <div id="frozen-baseline" class="status-meta">-</div>
             <div id="accepted-best" class="status-meta">-</div>
+            <div id="leading-candidate" class="status-meta">-</div>
             <div id="accepted-best-detail" class="status-meta">-</div>
           </div>
           <div style="text-align:right">
@@ -763,16 +765,24 @@
           </div>
           <div class="subpanel">
             <div class="subpanel-head">
-              <div class="panel-title">Accepted Best</div>
-              <div class="panel-note">当前基线</div>
+              <div class="panel-title">主线状态</div>
+              <div class="panel-note">baseline / stable best / candidate</div>
             </div>
             <div class="mini-grid">
               <div class="mini-card">
-                <div class="mini-card-label">run id</div>
+                <div class="mini-card-label">baseline</div>
+                <div id="frozen-baseline-top" class="mini-card-value">-</div>
+              </div>
+              <div class="mini-card">
+                <div class="mini-card-label">stable best</div>
                 <div id="accepted-best-top" class="mini-card-value">-</div>
               </div>
               <div class="mini-card">
-                <div class="mini-card-label">baseline</div>
+                <div class="mini-card-label">candidate</div>
+                <div id="leading-candidate-top" class="mini-card-value">-</div>
+              </div>
+              <div class="mini-card">
+                <div class="mini-card-label">detail</div>
                 <div id="campaign-meta-top" class="mini-card-value">-</div>
               </div>
             </div>
@@ -1456,7 +1466,9 @@
       const metrics = data.latest_metrics;
       const dataset = data.dataset || {};
       const autoresearch = data.autoresearch || {};
-      const acceptedBest = autoresearch?.accepted_best || {};
+      const frozenBaseline = autoresearch?.frozen_baseline || {};
+      const acceptedBest = autoresearch?.accepted_stable_best || autoresearch?.accepted_best || {};
+      const leadingCandidate = autoresearch?.leading_unverified_candidate || {};
       const acceptedMode = acceptedBest?.evaluation_mode === "cross_session_mainline"
         ? "cross_session"
         : acceptedBest?.evaluation_mode === "upper_bound_same_session"
@@ -1474,9 +1486,13 @@
       document.getElementById("status-meta").textContent = data.training?.running
         ? `已完成 ${data.training?.completed_epochs || 0} 轮`
         : `当前 campaign：${autoresearch.campaign_id || "-"}`;
-      document.getElementById("accepted-best").textContent = acceptedBest?.run_id || "-";
+      document.getElementById("frozen-baseline").textContent = `baseline ${frozenBaseline?.run_id || "-"}`;
+      document.getElementById("accepted-best").textContent = `stable best ${acceptedBest?.run_id || "-"}`;
+      document.getElementById("leading-candidate").textContent = `candidate ${leadingCandidate?.run_id || "-"}`;
       document.getElementById("accepted-best-detail").textContent = acceptedDetail;
       document.getElementById("accepted-best-top").textContent = acceptedBest?.run_id || "-";
+      document.getElementById("frozen-baseline-top").textContent = frozenBaseline?.run_id || "-";
+      document.getElementById("leading-candidate-top").textContent = leadingCandidate?.run_id || "-";
       document.getElementById("candidate-stage").textContent = autoresearch?.candidate?.stage ? `candidate ${autoresearch.candidate.stage}` : (autoresearch.stage || "-");
       document.getElementById("campaign-meta").textContent = autoresearch ? `${autoresearch.campaign_id || "-"} · iteration ${autoresearch.current_iteration ?? "-"} / ${autoresearch.max_iterations ?? "-"}` : "-";
       document.getElementById("campaign-meta-top").textContent = acceptedDetail;
@@ -1485,7 +1501,9 @@
       document.getElementById("top-chips").innerHTML = [
         chip(`目标 ${metrics?.target_mode || dataset.target_mode || "-"}`),
         chip(`空间 ${metrics?.target_space || dataset.target_space || "-"}`),
-        chip(`Accepted ${acceptedBest?.run_id || "-"}`, "ok"),
+        chip(`Baseline ${frozenBaseline?.run_id || "-"}`),
+        chip(`Stable ${acceptedBest?.run_id || "-"}`, "ok"),
+        chip(`Lead ${leadingCandidate?.run_id || "-"}`, leadingCandidate?.run_id ? "warn" : "off"),
         chip(`Feature ${acceptedBest?.feature_family || "-"}`),
         chip(`Model ${acceptedBest?.model_family || "-"}`),
         chip(`Mode ${acceptedMode}`),

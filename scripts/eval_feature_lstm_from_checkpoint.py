@@ -19,6 +19,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import train_lstm as train_shared
 import train_feature_lstm as feature_shared
+from bci_autoresearch.data.session_cache import load_session_cache
 from bci_autoresearch.data.runtime_splits import experiment_track_name, resolve_split_session_ids
 from bci_autoresearch.data.splits import load_dataset_config, scan_dataset_caches
 from bci_autoresearch.models.lstm_regressor import LSTMRegressor
@@ -34,11 +35,94 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--final-eval", action="store_true")
     parser.add_argument("--last-checkpoint-path", type=str, default=None)
+    parser.add_argument("--prediction-payload-path", type=str, default=None)
     return parser.parse_args()
 
 
 def build_gain_rankings(split_metrics: dict[str, object] | None) -> list[dict[str, object]]:
     return feature_shared.build_gain_rankings(split_metrics)
+
+
+def build_prediction_payload(
+    *,
+    model,
+    dataset,
+    dataset_config_path: str,
+    checkpoint: dict[str, object],
+    session_ids: list[str],
+    cache_infos,
+    device,
+    batch_size: int,
+    window_samples: int,
+    stride_samples: int,
+    pred_horizon_samples: int,
+    target_dim_indices: np.ndarray,
+    relative_origin_marker: str | None,
+    feature_bin_samples: int,
+    feature_reducers: tuple[str, ...],
+    signal_preprocess: str,
+    feature_families: tuple[str, ...],
+    artifact_probe: str,
+    artifact_shift_seconds: float,
+    seed: int,
+    target_kin_names: list[str],
+    x_scaler,
+    y_scaler,
+    split_name: str,
+) -> dict[str, object]:
+    sessions_payload: list[dict[str, object]] = []
+    for session_id in session_ids:
+        feature_sequence, target_matrix, target_indices = feature_shared.load_session_feature_view(
+            dataset=dataset,
+            split_name=split_name,
+            session_id=session_id,
+            cache_path=cache_infos[session_id].cache_path,
+            target_dim_indices=target_dim_indices,
+            relative_origin_marker=relative_origin_marker,
+            window_samples=window_samples,
+            stride_samples=stride_samples,
+            pred_horizon_samples=pred_horizon_samples,
+            feature_bin_samples=feature_bin_samples,
+            feature_reducers=feature_reducers,
+            signal_preprocess=signal_preprocess,
+            feature_families=feature_families,
+            artifact_probe=artifact_probe,
+            artifact_shift_seconds=artifact_shift_seconds,
+            seed=seed,
+        )
+        ds = feature_shared.FeatureSessionWindowDataset(
+            feature_sequence=feature_sequence,
+            target_matrix=target_matrix,
+            target_indices=target_indices,
+            window_samples=window_samples,
+            pred_horizon_samples=pred_horizon_samples,
+            x_scaler=x_scaler,
+            y_scaler=y_scaler,
+        )
+        loader = torch.utils.data.DataLoader(ds, batch_size=batch_size, shuffle=False)
+        y_true_z, y_pred_z = train_shared.predict(model, loader, device)
+        y_true = y_scaler.inverse_transform(y_true_z).astype(np.float32)
+        y_pred = y_scaler.inverse_transform(y_pred_z).astype(np.float32)
+        cache = load_session_cache(cache_infos[session_id].cache_path)
+        session_time = cache.t_ecog_s[np.asarray(target_indices, dtype=np.int64)].astype(np.float32)
+        sessions_payload.append(
+            {
+                "session_id": session_id,
+                "time_s": session_time.tolist(),
+                "target_names": list(target_kin_names),
+                "y_true": y_true.tolist(),
+                "y_pred": y_pred.tolist(),
+            }
+        )
+    return {
+        "dataset_name": dataset.dataset_name,
+        "dataset_config": str(Path(dataset_config_path).resolve()),
+        "split_name": split_name,
+        "feature_family": "+".join(str(item) for item in checkpoint["feature_families"]),
+        "feature_reducers": list(checkpoint["feature_reducers"]),
+        "model_family": "feature_lstm",
+        "sessions": sessions_payload,
+    }
 
 
 def main() -> None:
@@ -132,6 +216,39 @@ def main() -> None:
         )
         train_shared.add_target_space_metric_aliases(test_metrics, target_space=str(checkpoint["target_space"]))
 
+    prediction_payload_path = None
+    if args.final_eval and args.prediction_payload_path:
+        prediction_payload_path = str(Path(args.prediction_payload_path).resolve())
+        payload = build_prediction_payload(
+            model=model,
+            dataset=dataset,
+            dataset_config_path=args.dataset_config,
+            checkpoint=checkpoint,
+            session_ids=test_session_ids,
+            cache_infos=cache_infos,
+            device=device,
+            batch_size=args.batch_size,
+            window_samples=int(checkpoint["window_samples"]),
+            stride_samples=int(checkpoint["stride_samples"]),
+            pred_horizon_samples=int(checkpoint["pred_horizon_samples"]),
+            target_dim_indices=target_dim_indices,
+            relative_origin_marker=checkpoint.get("relative_origin_marker"),
+            feature_bin_samples=int(checkpoint["feature_bin_samples"]),
+            feature_reducers=tuple(checkpoint["feature_reducers"]),
+            signal_preprocess=str(checkpoint["signal_preprocess"]),
+            feature_families=tuple(checkpoint["feature_families"]),
+            artifact_probe=str(checkpoint.get("artifact_probe", "none")),
+            artifact_shift_seconds=float(checkpoint.get("artifact_shift_seconds", 10.0)),
+            seed=args.seed,
+            target_kin_names=target_names,
+            x_scaler=x_scaler,
+            y_scaler=y_scaler,
+            split_name="test",
+        )
+        prediction_path = Path(prediction_payload_path).resolve()
+        prediction_path.parent.mkdir(parents=True, exist_ok=True)
+        prediction_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
     metrics: dict[str, object] = {
         "dataset_name": dataset.dataset_name,
         "dataset_config": str(Path(args.dataset_config).resolve()),
@@ -148,6 +265,7 @@ def main() -> None:
         "experiment_track": experiment_track_name(dataset),
         "best_checkpoint_path": str(checkpoint_path),
         "last_checkpoint_path": str(Path(args.last_checkpoint_path).resolve()) if args.last_checkpoint_path else str(checkpoint_path),
+        "prediction_payload_path": prediction_payload_path,
         "primary_metric": "val_metrics.mean_pearson_r_zero_lag_macro",
         "train_summary": {
             "checkpoint_metric": "val_loss",

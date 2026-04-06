@@ -197,6 +197,33 @@ def filter_sessions_payload(payload: dict[str, Any], *, session_ids: set[str]) -
     }
 
 
+def load_prediction_payload(
+    result_payload: dict[str, Any],
+    *,
+    only_session_ids: set[str] | None = None,
+) -> dict[str, Any] | None:
+    prediction_payload_path = result_payload.get("prediction_payload_path")
+    if not prediction_payload_path:
+        return None
+    path = Path(str(prediction_payload_path)).resolve()
+    if not path.exists():
+        return None
+    payload = read_json(path)
+    if only_session_ids is not None:
+        payload = filter_sessions_payload(payload, session_ids=only_session_ids)
+    return payload
+
+
+def resolve_best_seed_result_json(seed_sweep_path: Path) -> Path | None:
+    if not seed_sweep_path.exists():
+        return None
+    payload = read_json(seed_sweep_path)
+    best_seed_run_id = str(payload.get("best_seed_run_id") or "").strip()
+    if not best_seed_run_id:
+        return None
+    return (seed_sweep_path.parent / f"{best_seed_run_id}.json").resolve()
+
+
 def predict_sessions_for_result(
     result_json: Path,
     *,
@@ -204,6 +231,9 @@ def predict_sessions_for_result(
     only_session_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     result_payload = read_json(result_json)
+    prediction_payload = load_prediction_payload(result_payload, only_session_ids=only_session_ids)
+    if prediction_payload is not None:
+        return prediction_payload
     checkpoint_path = Path(str(result_payload["best_checkpoint_path"])).resolve()
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     dataset = load_dataset_config(str(result_payload["dataset_config"]))
@@ -440,11 +470,8 @@ def main() -> None:
     args = parse_args()
     accepted_best_json = Path(args.accepted_best_json).resolve()
     seed_sweep_json = Path(args.seed_sweep_json).resolve()
-    candidate_paths = [
-        Path(args.random_forest_json).resolve(),
-        Path(args.xgboost_64_json).resolve(),
-        Path(args.xgboost_256_json).resolve(),
-    ]
+    xgboost_256_json = Path(args.xgboost_256_json).resolve()
+    feature_lstm_best_json = resolve_best_seed_result_json(seed_sweep_json)
 
     ridge_payload = predict_sessions_for_result(accepted_best_json, batch_size=args.batch_size)
     fixed_descriptor = {
@@ -460,36 +487,23 @@ def main() -> None:
 
     model_payloads = [filter_sessions_payload(ridge_payload, session_ids=segment_session_ids)]
     skipped_models: list[dict[str, str]] = []
-    for path in candidate_paths:
-        if path.exists():
-            if "xgboost" in path.stem:
-                skipped_models.append(
-                    {
-                        "run_id": path.stem,
-                        "reason": "当前 XGBoost checkpoint 不能稳定重载做片段级预测，formal 和压幅指标保留，片段对照先跳过。",
-                    }
-                )
-                continue
-            model_payloads.append(
-                predict_sessions_for_result(path, batch_size=args.batch_size, only_session_ids=segment_session_ids)
-            )
+    if xgboost_256_json.exists():
+        model_payloads.append(
+            predict_sessions_for_result(xgboost_256_json, batch_size=args.batch_size, only_session_ids=segment_session_ids)
+        )
+    else:
+        skipped_models.append({"run_id": "stageC_xgboost_256", "reason": "缺少兼容入口结果文件。"})
 
-    if seed_sweep_json.exists():
-        seed_sweep = read_json(seed_sweep_json)
-        for row in seed_sweep.get("seed_runs", []):
-            result_json_value = row.get("result_json")
-            if result_json_value:
-                result_path = Path(str(result_json_value)).resolve()
-            else:
-                result_path = (ROOT / "artifacts" / "question_queue_stageC" / f"{row['run_id']}.json").resolve()
-            if result_path.exists():
-                model_payloads.append(
-                    predict_sessions_for_result(
-                        result_path,
-                        batch_size=args.batch_size,
-                        only_session_ids=segment_session_ids,
-                    )
-                )
+    if feature_lstm_best_json is not None and feature_lstm_best_json.exists():
+        model_payloads.append(
+            predict_sessions_for_result(
+                feature_lstm_best_json,
+                batch_size=args.batch_size,
+                only_session_ids=segment_session_ids,
+            )
+        )
+    else:
+        skipped_models.append({"run_id": "stageC_feature_lstm", "reason": "缺少 feature-LSTM 最优 seed 结果文件。"})
 
     payload = {
         "fixed_segment": fixed_descriptor,

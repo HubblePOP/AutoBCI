@@ -115,7 +115,7 @@ def resolve_autoresearch_metrics_path(status_path: Path) -> Path | None:
             if path.exists():
                 return path
 
-    accepted_best = status.get("accepted_best") or {}
+    accepted_best = status.get("accepted_stable_best") or status.get("accepted_best") or {}
     for artifact in accepted_best.get("artifacts", []):
         artifact_path = Path(str(artifact)).resolve()
         if artifact_path.suffix == ".json" and artifact_path.exists():
@@ -782,8 +782,13 @@ def main() -> None:
     monitor_dir = Path(args.monitor_dir).resolve()
     autoresearch_status_path = monitor_dir / "autoresearch_status.json"
 
-    if not current_metrics_path.exists() and current_metrics_fallback_path.exists():
-        current_metrics_path = current_metrics_fallback_path
+    if not current_metrics_path.exists():
+        if current_metrics_fallback_path.exists():
+            current_metrics_path = current_metrics_fallback_path
+        else:
+            resolved_metrics_path = resolve_autoresearch_metrics_path(autoresearch_status_path)
+            if resolved_metrics_path is not None and resolved_metrics_path.exists():
+                current_metrics_path = resolved_metrics_path
 
     base_dataset = load_dataset_config(base_config_path, validate_source_paths=True)
     current_dataset = load_dataset_config(current_config_path, validate_source_paths=True)
@@ -795,10 +800,18 @@ def main() -> None:
     }
     channel_scan = read_json(channel_scan_path)
     scan_by_session = {row["session_id"]: row for row in channel_scan["sessions"]}
-    previous_metrics = load_metrics_summary(previous_metrics_path)
-    clean64_metrics = load_metrics_summary(clean64_metrics_path)
     current_metrics = load_metrics_summary(current_metrics_path)
     current_metrics_payload = read_json(current_metrics_path)
+    if previous_metrics_path.exists():
+        previous_metrics = load_metrics_summary(previous_metrics_path)
+    else:
+        previous_metrics = current_metrics
+        previous_metrics_path = current_metrics_path
+    if clean64_metrics_path.exists():
+        clean64_metrics = load_metrics_summary(clean64_metrics_path)
+    else:
+        clean64_metrics = current_metrics
+        clean64_metrics_path = current_metrics_path
     preview_metrics_path = resolve_autoresearch_metrics_path(autoresearch_status_path) or current_metrics_path
     preview_metrics_payload = read_json(preview_metrics_path)
 

@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-dir",
-        default=str(ROOT / "artifacts" / "question_queue"),
+        default=None,
     )
     parser.add_argument(
         "--channel-scan-json",
@@ -42,6 +42,16 @@ def parse_args() -> argparse.Namespace:
         default=str(ROOT / "artifacts" / "checkpoints"),
     )
     return parser.parse_args()
+
+
+def default_output_dir_for_stage(stage: str) -> Path:
+    stage_dir = {
+        "A": "question_queue_stageA",
+        "B": "question_queue_stageB",
+        "C": "question_queue_stageC",
+        "D": "question_queue_stageD",
+    }[stage]
+    return ROOT / "artifacts" / stage_dir
 
 
 def stage_runs(args: argparse.Namespace) -> list[dict[str, object]]:
@@ -214,6 +224,7 @@ def stage_runs(args: argparse.Namespace) -> list[dict[str, object]]:
             "feature_family": "hg_power",
             "feature_reducers": "mean",
             "artifact_probe": "none",
+            "reuse_existing": True,
         },
         {
             "run_id": "stageD_upper_bound_lmp_hg_ridge",
@@ -223,6 +234,7 @@ def stage_runs(args: argparse.Namespace) -> list[dict[str, object]]:
             "feature_family": "lmp+hg_power",
             "feature_reducers": "mean",
             "artifact_probe": "none",
+            "reuse_existing": True,
         },
         {
             "run_id": "stageD_upper_bound_lmp_hg_feature_lstm",
@@ -239,6 +251,19 @@ def stage_runs(args: argparse.Namespace) -> list[dict[str, object]]:
             "num_layers": 1,
             "dropout": 0.1,
             "lr": 1e-3,
+            "reuse_existing": True,
+        },
+        {
+            "run_id": "stageD_upper_bound_lmp_hg_xgboost_256_seed0",
+            "script": "train_tree_baseline.py",
+            "dataset_config": args.upper_bound_config,
+            "signal_preprocess": "car_notch_bandpass",
+            "feature_family": "lmp+hg_power",
+            "feature_reducers": "mean",
+            "artifact_probe": "none",
+            "model_family": "xgboost",
+            "xgb_n_estimators": 256,
+            "reuse_existing": True,
         },
     ]
 
@@ -257,7 +282,7 @@ def run_bank_qc_gate(*, dataset_config: str, channel_scan_json: str) -> None:
 
 def main() -> None:
     args = parse_args()
-    output_dir = Path(args.output_dir).resolve()
+    output_dir = Path(args.output_dir).resolve() if args.output_dir else default_output_dir_for_stage(args.stage)
     checkpoint_dir = Path(args.checkpoint_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
