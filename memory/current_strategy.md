@@ -4,7 +4,7 @@
 
 - `frozen_baseline`：`stageC_ridge`
 - `accepted_stable_best`：`stageC_xgboost_256`
-- `accepted_best`：兼容字段，当前等于 `accepted_stable_best`
+- `accepted_best`：兼容字段，当前等于 `stageC_xgboost_256`
 - `leading_unverified_candidate`：当前为空
 
 ## 主线定义
@@ -15,6 +15,9 @@
 - 输出：`Hip, Kne, Ank, Mtp, Sho, Elb, Wri, Mcp`
 - split：`18 train / 2 val / 2 test`
 - 输入：每条 session 只保留有效半区的 `64` 通道
+- 采样率：
+  - `fs_ecog = 2000 Hz`
+  - `fs_vicon = 200 Hz`
 - 预处理：`car_notch_bandpass`
 - 特征：`lmp + hg_power`
 - reducers：`mean`
@@ -43,6 +46,8 @@
 - `feature-LSTM` 现在是已复验完成的上一档稳定候选
   - packet 中位数：`val r = 0.4227`
   - packet 中位数：`test r = 0.3483`
+  - packet 中位数：`test MAE = 8.9200°`
+  - packet 中位数：`test RMSE = 11.4741°`
 
 ## 上限线
 
@@ -54,14 +59,12 @@
 
 ## 当前重点
 
-- 主线已经从单一 `accepted_best` 改成三层状态管理
-- `XGBoost` packet 已通过 gate，所以稳定最优切到 `stageC_xgboost_256`
-- `Question E` 已立项，当前先盯 `Kne / Wri / Mcp` 的 `gain / bias`
-- 下一组受控比较：
-  - `50 ms vs 100 ms`
-  - `MSE vs Huber`
-  - `MSE vs MSE + derivative-aware loss`
-  - `upper-limb vs lower-limb` 分组训练
+- 主线模型顺序：
+  - `stageC_xgboost_256_seed_summary`
+  - `stageC_feature_lstm_seed_summary`
+  - `stageC_ridge`
+- `Question E` 当前先看 `Kne / Wri / Mcp`
+- 远端阅读入口：`reports/2026-04-07/experiment_status.md`
 
 ## 当前限制
 

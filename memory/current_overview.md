@@ -10,25 +10,33 @@
 ## 当前主线
 
 - 数据集：`walk_matched_v1_64clean_joints`
-- 目标：第二个 sheet 的 `8` 个关节角
+- 目标：`joints_sheet` 的 `8` 个关节角
+- 输出：`Hip, Kne, Ank, Mtp, Sho, Elb, Wri, Mcp`
 - 输入：每条 session 的有效 `64` 通道脑电
+- 采样率：
+  - `fs_ecog = 2000 Hz`
+  - `fs_vicon = 200 Hz`
 - 预处理：`car_notch_bandpass`
 - 特征：`lmp + hg_power`，`100 ms` 分箱后取 `mean`
+- split：`18 train / 2 val / 2 test`
 
 ## 当前结果
 
 - `stageC_ridge`
   - `val r = 0.3180`
   - `test r = 0.2322`
+  - `test RMSE = 11.8382°`
 
 - `stageC_xgboost_256`
   - packet 中位数 `val r = 0.4329`
   - packet 中位数 `test r = 0.3712`
+  - packet 中位数 `test RMSE = 10.9990°`
   - best seed 是 `stageC_xgboost_256_seed2`
 
 - `stageC_feature_lstm`
   - packet 中位数 `val r = 0.4227`
   - packet 中位数 `test r = 0.3483`
+  - packet 中位数 `test RMSE = 11.4741°`
 
 ## 上限线
 
@@ -41,11 +49,7 @@
 
 - `Question E: amplitude recovery`
 - 当前先看 `Kne / Wri / Mcp`
-- 下一组比较：
-  - `50 ms vs 100 ms`
-  - `MSE vs Huber`
-  - `MSE vs MSE + derivative-aware loss`
-  - `upper-limb vs lower-limb`
+- 对外阅读入口：`reports/2026-04-07/experiment_status.md`
 
 ## 仓库
 

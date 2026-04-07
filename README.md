@@ -3,10 +3,11 @@
 这个仓库现在用于承接当前这套 BCI 实验项目代码。
 
 - 项目来源：`/Volumes/Elements/bci/bci_codex_starter`
+- 当前实验状态入口：[`reports/2026-04-07/experiment_status.md`](reports/2026-04-07/experiment_status.md)
 - 当前已同步内容：
   - `src / scripts / configs / tests / dashboard / memory`
   - `tools/autoresearch` 的源码和配置
-  - 本轮结果摘要：`reports/2026-04-06/`
+  - 本轮结果摘要：`reports/2026-04-06/`、`reports/2026-04-07/`
 - 当前没有同步：
   - `data/` 缓存
   - `artifacts/` 大体积生成物
