@@ -15,6 +15,9 @@
 - 数据集：`walk_matched_v1_64clean_joints`
 - 目标：`joints_sheet` 的 `8` 个关节角
 - 输出：`Hip, Kne, Ank, Mtp, Sho, Elb, Wri, Mcp`
+- session 总数：`22`
+  - `2024-07-17`：`12` 组，`01, 03, 04, 05, 06, 07, 08, 09, 10, 12, 14, 16`
+  - `2024-07-19`：`10` 组，`01, 02, 03, 04, 05, 06, 07, 08, 09, 10`
 - 输入：每条 session 的有效 `64` 通道脑电
 - 采样率：
   - `fs_ecog = 2000 Hz`
@@ -22,6 +25,8 @@
 - 预处理：`car_notch_bandpass`
 - 特征：`lmp + hg_power`，`100 ms` 分箱后取 `mean`
 - split：`18 train / 2 val / 2 test`
+  - `val`：`walk_20240717_12`，`walk_20240719_07`
+  - `test`：`walk_20240717_16`，`walk_20240719_10`
 
 ## 当前结果
 
