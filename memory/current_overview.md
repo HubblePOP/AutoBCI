@@ -1,5 +1,8 @@
 # 当前状态
 
+> 对外主文稿看：`reports/2026-04-07/experiment_status.md`
+> 这份文件是内部简版摘要。
+
 ## 主线怎么记
 
 - `frozen_baseline`：`stageC_ridge`

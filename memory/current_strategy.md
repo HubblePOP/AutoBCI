@@ -1,5 +1,8 @@
 # 当前策略
 
+> 对外主文稿看：`reports/2026-04-07/experiment_status.md`
+> 这份文件只保留当前主线和当前结论。
+
 ## 当前状态
 
 - `frozen_baseline`：`stageC_ridge`
