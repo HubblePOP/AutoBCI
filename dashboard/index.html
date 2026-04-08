@@ -3,144 +3,480 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BCI Research Monitor</title>
+  <title>AutoResearch Operator</title>
   <link rel="icon" href="data:," />
   <style>
     :root {
-      --bg: #e7ecec;
-      --panel: rgba(248, 246, 239, 0.76);
-      --panel-strong: rgba(255, 255, 255, 0.82);
-      --ink: #14314d;
-      --muted: #607182;
-      --line: rgba(20, 49, 77, 0.12);
-      --true: #3f73a8;
-      --pred: #dd8b1d;
+      --bg: #eef2ed;
+      --panel: rgba(251, 248, 240, 0.86);
+      --panel-strong: rgba(255, 253, 248, 0.92);
+      --ink: #17324a;
+      --muted: #667481;
+      --line: rgba(23, 50, 74, 0.10);
       --ok: #2f7e63;
-      --warn: #cb8a2a;
-      --off: #8b97a0;
-      --shadow: 0 20px 70px rgba(30, 44, 58, 0.12);
+      --warn: #b8842d;
+      --off: #8694a0;
+      --shadow: 0 28px 90px rgba(23, 50, 74, 0.12);
+      --green: #3e8b78;
+      --green-line: #73bca1;
+      --gray-dot: rgba(23, 50, 74, 0.14);
+      --rmse: #c66d2e;
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
+      min-height: 100vh;
+      position: relative;
       color: var(--ink);
       font-family: "SF Pro Display", "PingFang SC", "Noto Sans SC", sans-serif;
+      background: linear-gradient(180deg, var(--bg) 0%, #e7eee9 100%);
+      overflow-x: hidden;
+      isolation: isolate;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      background-image:
+        linear-gradient(180deg, rgba(238, 242, 237, 0.72), rgba(238, 242, 237, 0.94)),
+        url("assets/monet/water_lilies.jpg"),
+        url("assets/monet/water_lily_pond_cc0.jpg"),
+        url("assets/monet/water_lilies_japanese_bridge.jpg");
+      background-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
+      background-size: cover, 48% 56%, 38% 42%, 34% 38%;
+      background-position: center center, left -3% top 2%, right -4% top 18%, center bottom -6%;
+      opacity: 0.76;
+      filter: blur(12px) saturate(0.74) contrast(0.94) brightness(1.03);
+      transform: scale(1.04);
+      pointer-events: none;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
       background:
-        radial-gradient(circle at 12% 14%, rgba(77, 116, 171, 0.18), transparent 20%),
-        radial-gradient(circle at 84% 18%, rgba(225, 179, 79, 0.16), transparent 18%),
-        radial-gradient(circle at 78% 78%, rgba(60, 127, 107, 0.13), transparent 22%),
-        linear-gradient(180deg, #f4f1e9 0%, #dce8ee 52%, #efe0cf 100%);
-      min-height: 100vh;
+        radial-gradient(circle at 10% 12%, rgba(96, 142, 171, 0.18), transparent 18%),
+        radial-gradient(circle at 82% 16%, rgba(190, 140, 80, 0.14), transparent 18%),
+        radial-gradient(circle at 74% 82%, rgba(76, 145, 113, 0.11), transparent 20%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.16), transparent 24%, rgba(255, 255, 255, 0.10) 76%, transparent 100%);
     }
 
     .shell {
-      max-width: 1500px;
+      max-width: 1360px;
       margin: 0 auto;
       padding: 28px 24px 40px;
     }
 
     .hero {
       display: grid;
-      grid-template-columns: 1.4fr 1fr;
-      gap: 24px;
-      align-items: end;
-      margin-bottom: 24px;
+      grid-template-columns: minmax(340px, 1.02fr) minmax(580px, 1.38fr);
+      grid-template-areas:
+        "hero metrics"
+        "hero heartbeat";
+      gap: 16px 18px;
+      align-items: stretch;
+      margin-bottom: 20px;
+    }
+
+    .hero-card {
+      grid-area: hero;
+      padding: 22px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .hero-kicker {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .brand-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(47, 123, 98, 0.12);
+      color: var(--ok);
+      border: 1px solid rgba(47, 123, 98, 0.16);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
 
     .eyebrow {
-      margin-bottom: 12px;
       font-size: 11px;
-      letter-spacing: 0.18em;
+      letter-spacing: 0.16em;
       text-transform: uppercase;
       color: var(--muted);
+      margin-bottom: 10px;
     }
 
     h1 {
       margin: 0;
-      font-size: clamp(36px, 6vw, 72px);
-      line-height: 0.94;
+      font-size: clamp(32px, 4.6vw, 56px);
+      line-height: 0.98;
       letter-spacing: -0.05em;
-      max-width: 9ch;
+      font-family: "Iowan Old Style", "Baskerville", "Times New Roman", "Songti SC", serif;
+      font-weight: 600;
     }
 
     .sub {
       margin-top: 12px;
-      max-width: 54ch;
       font-size: 15px;
       line-height: 1.65;
       color: var(--muted);
+      max-width: 34ch;
     }
 
     .panel {
-      background: linear-gradient(135deg, rgba(250, 247, 240, 0.72), rgba(231, 239, 244, 0.58)), var(--panel);
-      border: 1px solid rgba(255, 255, 255, 0.8);
-      border-radius: 28px;
+      background: linear-gradient(135deg, rgba(252, 248, 240, 0.82), rgba(234, 240, 244, 0.66)), var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.84);
+      border-radius: 26px;
       box-shadow: var(--shadow);
       backdrop-filter: blur(16px);
       overflow: hidden;
     }
 
-    .hero-side {
-      display: grid;
-      gap: 14px;
+    .hero-shell,
+    .hero-side,
+    .hero-mini-grid {
+      display: contents;
     }
 
-    .status-strip {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 14px;
-      padding: 18px 20px;
-      background: var(--panel-strong);
-      border-radius: 24px;
-      border: 1px solid rgba(255, 255, 255, 0.84);
-      box-shadow: var(--shadow);
-    }
-
-    .status-main {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .dot {
-      width: 14px;
-      height: 14px;
-      border-radius: 999px;
-      background: var(--warn);
-      flex: 0 0 auto;
-    }
-
-    .dot.ok { background: var(--ok); }
-    .dot.off { background: var(--off); }
-
-    .status-title {
-      font-size: 17px;
-      font-weight: 700;
-    }
-
-    .status-meta,
     .timestamp {
       font-size: 12px;
+      line-height: 1.55;
       color: var(--muted);
-      line-height: 1.5;
     }
 
     .timestamp {
       text-align: right;
       white-space: nowrap;
+      flex: 0 0 auto;
     }
 
-    .grid {
+    .hero-summary-grid {
       display: grid;
-      gap: 22px;
-      margin-top: 22px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px 14px;
     }
 
-    .grid.two {
-      grid-template-columns: 1.15fr 0.95fr;
+    .hero-summary-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      min-width: 0;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 8px;
+    }
+
+    .hero-summary-label {
+      font-size: 12px;
+      color: var(--muted);
+      flex: 0 0 auto;
+    }
+
+    .hero-summary-value {
+      min-width: 0;
+      text-align: right;
+      font-size: 13px;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+      line-height: 1.5;
+    }
+
+    .hero-effect-note {
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.58);
+      border: 1px solid rgba(255, 255, 255, 0.78);
+      display: grid;
+      gap: 4px;
+    }
+
+    .hero-effect-note strong {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .hero-effect-note span {
+      font-size: 13px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+    }
+
+    .hero-formal-summary {
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+
+    .hero-glossary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .hero-glossary-item {
+      display: grid;
+      gap: 2px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.54);
+      border: 1px solid rgba(23, 50, 74, 0.08);
+    }
+
+    .hero-glossary-key {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink);
+    }
+
+    .hero-glossary-copy {
+      font-size: 11px;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+
+    .direction-card-shell,
+    .heartbeat-shell {
+      padding: 16px 18px 18px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.54);
+      border: 1px solid rgba(255, 255, 255, 0.78);
+    }
+
+    .direction-card-shell {
+      grid-area: metrics;
+    }
+
+    .heartbeat-shell {
+      grid-area: heartbeat;
+      align-self: start;
+    }
+
+    .mini-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .mini-note {
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .direction-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .direction-card {
+      padding: 10px 12px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.6);
+      border: 1px solid rgba(20, 49, 74, 0.08);
+      display: grid;
+      gap: 8px;
+    }
+
+    .joint-breakdown-shell {
+      margin-top: 20px;
+      padding: 18px 22px 22px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .joint-breakdown-note {
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    .limb-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .limb-card {
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.58);
+      border: 1px solid rgba(20, 49, 74, 0.08);
+      display: grid;
+      gap: 8px;
+    }
+
+    .limb-title {
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .limb-meta {
+      font-size: 11px;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+
+    .limb-metric-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .joint-table-wrap {
+      overflow-x: auto;
+      border-radius: 18px;
+      border: 1px solid rgba(20, 49, 74, 0.08);
+      background: rgba(255, 255, 255, 0.56);
+    }
+
+    .joint-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 640px;
+    }
+
+    .joint-table th,
+    .joint-table td {
+      padding: 11px 12px;
+      border-bottom: 1px solid rgba(23, 50, 74, 0.08);
+      text-align: left;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .joint-table th {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.74);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    .joint-table td.metric {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .joint-table td.group {
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .joint-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .direction-label {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .direction-value {
+      display: grid;
+      gap: 6px;
+    }
+
+    .direction-metric {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: baseline;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .direction-metric strong {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .direction-metric small {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .heartbeat-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .heartbeat-state {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .heartbeat-state.ok { color: var(--ok); }
+    .heartbeat-state.warn { color: var(--warn); }
+    .heartbeat-state.off { color: var(--muted); }
+
+    .heartbeat-shell.compact {
+      padding: 14px 16px 16px;
+    }
+
+    .heartbeat-shell.compact .mini-title {
+      margin-bottom: 4px;
+    }
+
+    .heartbeat-shell.compact .mini-note {
+      margin-bottom: 10px;
+    }
+
+    .heartbeat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 12px;
+    }
+
+    .heartbeat-item {
+      display: grid;
+      gap: 4px;
+    }
+
+    .heartbeat-label {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .heartbeat-value {
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
     }
 
     .panel-head {
@@ -148,14 +484,13 @@
       justify-content: space-between;
       gap: 16px;
       align-items: baseline;
-      padding: 22px 24px 12px;
+      padding: 20px 22px 12px;
       border-bottom: 1px solid var(--line);
     }
 
     .panel-title {
       font-size: 15px;
       font-weight: 700;
-      letter-spacing: 0.01em;
     }
 
     .panel-note {
@@ -164,531 +499,603 @@
       text-align: right;
     }
 
-    .stats {
+    .mainline-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 14px;
-      padding: 18px 24px 24px;
+      padding: 18px 22px 22px;
     }
 
-    .metric-card {
-      padding: 18px 16px;
-      border-radius: 22px;
-      background: rgba(255, 255, 255, 0.42);
-      border: 1px solid rgba(255, 255, 255, 0.72);
-    }
-
-    .metric-label {
-      font-size: 11px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 10px;
-    }
-
-    .metric-value {
-      font-size: clamp(26px, 3vw, 40px);
-      line-height: 1;
-      letter-spacing: -0.04em;
-      font-weight: 700;
-    }
-
-    .metric-sub {
-      margin-top: 8px;
-      font-size: 12px;
-      color: var(--muted);
-      line-height: 1.55;
-    }
-
-    .chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      padding: 14px 24px 0;
-    }
-
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: rgba(20, 49, 77, 0.08);
-      color: var(--ink);
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .chip.ok { background: rgba(47, 126, 99, 0.14); color: var(--ok); }
-    .chip.warn { background: rgba(203, 138, 42, 0.14); color: var(--warn); }
-    .chip.off { color: var(--muted); }
-
-    .info-list {
+    .chart-card {
       display: grid;
-      gap: 0;
-      padding: 8px 24px 22px;
+      gap: 12px;
+      padding: 14px 16px 16px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.60);
+      border: 1px solid rgba(255, 255, 255, 0.76);
     }
 
-    .info-list.compact {
-      padding: 0;
-    }
-
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 13px 0;
-      border-bottom: 1px solid var(--line);
-      font-size: 14px;
-    }
-
-    .info-row span:first-child {
-      color: var(--muted);
-    }
-
-    .code-pill {
-      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-      font-size: 12px;
-      background: rgba(20, 49, 77, 0.06);
-      padding: 2px 7px;
-      border-radius: 999px;
-    }
-
-    .iteration-top-layout {
-      display: grid;
-      grid-template-columns: 0.92fr 1.5fr;
-      gap: 18px;
-      padding: 16px 24px 24px;
-    }
-
-    .stack {
-      display: grid;
-      gap: 14px;
-    }
-
-    .subpanel {
-      padding: 16px 18px 18px;
-      border-radius: 22px;
-      background: rgba(255, 255, 255, 0.46);
-      border: 1px solid rgba(255, 255, 255, 0.72);
-    }
-
-    .subpanel-head {
+    .chart-head {
       display: flex;
       justify-content: space-between;
       gap: 12px;
       align-items: baseline;
-      margin-bottom: 14px;
     }
 
-    .mini-grid {
+    .chart-title {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
+      gap: 4px;
     }
 
-    .mini-card {
-      padding: 12px 12px 10px;
-      border-radius: 16px;
-      background: rgba(248, 246, 240, 0.7);
-      border: 1px solid rgba(20, 49, 77, 0.08);
-    }
-
-    .mini-card-label {
-      font-size: 11px;
+    .chart-label {
+      font-size: 12px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--muted);
-      margin-bottom: 8px;
     }
 
-    .mini-card-value {
-      font-size: 15px;
-      line-height: 1.45;
+    .chart-value {
+      font-size: 14px;
       font-weight: 700;
-      word-break: break-word;
     }
 
-    .iteration-list-top {
+    .chart-legend {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .chart-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .chart-legend i {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+    }
+
+    .chart-legend i.discarded {
+      background: var(--gray-dot);
+    }
+
+    .chart-legend i.kept {
+      background: var(--green);
+      border: 1px solid rgba(26, 86, 57, 0.48);
+    }
+
+    .chart-legend i.running {
+      width: 18px;
+      height: 0;
+      border-radius: 0;
+      border-top: 3px solid var(--green-line);
+      background: transparent;
+    }
+
+    .chart-svg {
+      width: 100%;
+      height: 280px;
+      display: block;
+      border-radius: 18px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(246, 242, 235, 0.72)),
+        linear-gradient(90deg, rgba(20, 49, 74, 0.02), rgba(20, 49, 74, 0));
+    }
+
+    .chart-foot {
+      display: grid;
+      gap: 8px;
+    }
+
+    .chart-axis {
+      position: relative;
+      height: 16px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .chart-axis span {
+      position: absolute;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+
+    .chart-copy {
+      font-size: 11px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    .chart-overlay-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .chart-overlay-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.64);
+      border: 1px solid rgba(20, 49, 74, 0.08);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .chart-overlay-chip i {
+      width: 12px;
+      height: 0;
+      border-top-width: 3px;
+      border-top-style: solid;
+      border-radius: 999px;
+      display: inline-block;
+    }
+
+    .projection-shell {
+      padding: 18px 22px 22px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .projection-controls {
+      display: grid;
+      gap: 12px;
+      padding: 14px 16px 16px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.60);
+      border: 1px solid rgba(255, 255, 255, 0.76);
+    }
+
+    .projection-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .projection-title {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .projection-sub {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .projection-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .projection-button {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(47, 123, 98, 0.14);
+      color: var(--ok);
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: transform 120ms ease, background 120ms ease;
+    }
+
+    .projection-button:hover {
+      transform: translateY(-1px);
+      background: rgba(47, 123, 98, 0.18);
+    }
+
+    .projection-select {
+      appearance: none;
+      border: 1px solid rgba(20, 43, 64, 0.10);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.76);
+      color: var(--ink);
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .projection-slider {
+      flex: 1 1 320px;
+      accent-color: var(--green);
+    }
+
+    .projection-time {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .projection-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .projection-card {
       display: grid;
       gap: 10px;
+      padding: 14px 16px 16px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.60);
+      border: 1px solid rgba(255, 255, 255, 0.76);
     }
 
-    .iteration-entry {
-      padding: 14px 0;
-      border-bottom: 1px dashed rgba(20, 49, 77, 0.1);
+    .projection-card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: baseline;
     }
 
-    .iteration-entry:last-child {
-      border-bottom: none;
-      padding-bottom: 0;
+    .projection-card-title {
+      font-size: 13px;
+      font-weight: 700;
     }
 
-    .entry-top {
+    .projection-card-meta {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .projection-svg {
+      width: 100%;
+      height: 260px;
+      display: block;
+      border-radius: 18px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(246, 242, 235, 0.72)),
+        linear-gradient(90deg, rgba(20, 49, 74, 0.02), rgba(20, 49, 74, 0));
+    }
+
+    .projection-legend {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .projection-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .projection-legend i {
+      display: inline-block;
+      width: 14px;
+      height: 0;
+      border-top: 3px solid currentColor;
+      border-radius: 999px;
+    }
+
+    .projection-copy {
+      font-size: 11px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    .joint-series-shell {
+      display: grid;
+      gap: 12px;
+      padding: 14px 16px 16px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.60);
+      border: 1px solid rgba(255, 255, 255, 0.76);
+    }
+
+    .joint-series-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .joint-series-title {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .joint-series-sub {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .joint-series-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .joint-series-card {
+      display: grid;
+      gap: 10px;
+      padding: 12px 14px 14px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.82);
+    }
+
+    .joint-series-card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: baseline;
+    }
+
+    .joint-series-card-title {
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .joint-series-card-meta {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .joint-series-legend {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .joint-series-legend span {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .joint-series-legend i {
+      display: inline-block;
+      width: 12px;
+      height: 0;
+      border-top: 2px solid currentColor;
+    }
+
+    .story-shell {
+      padding: 16px 22px 22px;
+    }
+
+    .story-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .story-section {
+      display: grid;
+      gap: 12px;
+      padding: 14px 16px 16px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.56);
+      border: 1px solid rgba(255, 255, 255, 0.76);
+    }
+
+    .story-section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .story-section-title {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .story-section-count {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .story-stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .story-card {
+      padding: 14px 16px 16px;
+      border-radius: 18px;
+      background: linear-gradient(145deg, rgba(255, 253, 248, 0.88), rgba(241, 246, 241, 0.58));
+      border: 1px solid rgba(23, 50, 74, 0.08);
+      display: grid;
+      gap: 12px;
+    }
+
+    .story-head {
       display: flex;
       justify-content: space-between;
       gap: 12px;
       align-items: flex-start;
     }
 
-    .entry-run {
-      font-size: 14px;
+    .story-title {
+      font-size: 15px;
       font-weight: 700;
-      margin-bottom: 4px;
+      line-height: 1.45;
     }
 
-    .entry-meta {
+    .story-meta {
       font-size: 12px;
+      line-height: 1.55;
       color: var(--muted);
-      line-height: 1.5;
     }
 
-    .entry-badge {
+    .story-badge {
       display: inline-flex;
       align-items: center;
-      padding: 6px 10px;
+      padding: 5px 10px;
       border-radius: 999px;
       font-size: 11px;
       font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      white-space: nowrap;
-      background: rgba(20, 49, 77, 0.08);
+      letter-spacing: 0.04em;
+      flex: 0 0 auto;
+    }
+
+    .story-badge.ok { background: rgba(47, 123, 98, 0.14); color: var(--ok); }
+    .story-badge.warn { background: rgba(185, 134, 44, 0.14); color: var(--warn); }
+    .story-badge.off { background: rgba(132, 148, 160, 0.14); color: var(--off); }
+
+    .story-facts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .fact-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(20, 49, 74, 0.08);
       color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
     }
 
-    .entry-badge.ok {
-      background: rgba(47, 126, 99, 0.14);
-      color: var(--ok);
-    }
-
-    .entry-badge.warn {
-      background: rgba(203, 138, 42, 0.14);
-      color: var(--warn);
-    }
-
-    .entry-body {
+    .story-body {
       display: grid;
       gap: 7px;
-      margin-top: 10px;
     }
 
-    .entry-line {
-      font-size: 12px;
-      color: var(--muted);
-      line-height: 1.58;
-    }
-
-    .entry-line strong {
-      color: var(--ink);
-      margin-right: 6px;
-    }
-
-    .controls {
+    .story-line {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
-      padding: 16px 24px 0;
-    }
-
-    .control-field {
-      display: grid;
-      gap: 6px;
-    }
-
-    .control-field label {
-      font-size: 11px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    .control-field select,
-    .control-field input[type="range"] {
-      width: 100%;
-    }
-
-    .control-field select {
-      appearance: none;
-      border: 1px solid rgba(20, 49, 77, 0.12);
-      background: rgba(255, 255, 255, 0.7);
-      border-radius: 14px;
-      padding: 11px 12px;
-      font-size: 14px;
-      color: var(--ink);
-      outline: none;
-    }
-
-    .control-field input[type="range"] {
-      accent-color: var(--true);
-    }
-
-    .joint-picker {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      min-height: 44px;
-      padding-top: 2px;
-    }
-
-    .joint-pill {
-      appearance: none;
-      border: 1px solid rgba(20, 49, 77, 0.14);
-      background: rgba(255, 255, 255, 0.7);
-      color: var(--muted);
-      border-radius: 999px;
-      padding: 8px 12px;
-      font-size: 12px;
-      cursor: pointer;
-    }
-
-    .joint-pill[data-active="true"] {
-      background: rgba(63, 115, 168, 0.14);
-      border-color: rgba(63, 115, 168, 0.26);
-      color: var(--true);
-      font-weight: 700;
-    }
-
-    .play-row {
-      display: grid;
-      grid-template-columns: 0.9fr 1.8fr 0.8fr 1.1fr;
-      gap: 12px;
-      align-items: end;
-      padding: 12px 24px 0;
-    }
-
-    .play-actions {
-      display: flex;
+      grid-template-columns: 86px 1fr;
       gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .btn {
-      appearance: none;
-      border: 1px solid rgba(20, 49, 77, 0.12);
-      background: rgba(255, 255, 255, 0.72);
-      color: var(--ink);
-      border-radius: 14px;
-      padding: 11px 14px;
-      font-size: 14px;
-      cursor: pointer;
-    }
-
-    .btn[data-active="true"] {
-      background: rgba(63, 115, 168, 0.14);
-      border-color: rgba(63, 115, 168, 0.28);
-    }
-
-    .readout {
-      min-height: 84px;
-      display: grid;
-      gap: 6px;
-      align-content: center;
-      padding: 10px 12px;
-      border-radius: 14px;
-      border: 1px solid rgba(20, 49, 77, 0.12);
-      background: rgba(255, 255, 255, 0.62);
-    }
-
-    .readout-time {
-      font-size: 14px;
-      font-weight: 700;
-    }
-
-    .readout-lines {
-      display: grid;
-      gap: 4px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    .readout-lines strong {
-      margin-right: 6px;
-    }
-
-    .legend {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      padding: 14px 24px 0;
-    }
-
-    .legend-item {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-radius: 999px;
-      border: 1px solid rgba(20, 49, 77, 0.1);
-      background: rgba(255,255,255,0.64);
-      font-size: 12px;
-    }
-
-    .legend-line {
-      width: 26px;
-      height: 3px;
-      border-radius: 999px;
-      display: inline-block;
-    }
-
-    .chart-section {
-      padding: 18px 24px 24px;
-    }
-
-    .joint-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-    }
-
-    .chart-card {
-      padding: 12px;
-      border-radius: 18px;
-      background: rgba(248, 246, 240, 0.58);
-      border: 1px solid rgba(20, 49, 77, 0.08);
-    }
-
-    .chart-head {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      align-items: baseline;
-      margin-bottom: 8px;
-    }
-
-    .chart-head strong {
-      font-size: 14px;
-    }
-
-    .chart-head span {
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    .chart-svg {
-      width: 100%;
-      height: 170px;
-      display: block;
-    }
-
-    .table-wrap {
-      padding: 0 24px 24px;
-      overflow-x: auto;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    th, td {
-      padding: 11px 0;
-      border-bottom: 1px dashed rgba(20, 49, 77, 0.1);
-      text-align: left;
       font-size: 13px;
-      vertical-align: top;
+      line-height: 1.65;
+      min-width: 0;
     }
 
-    th {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-    }
-
-    td strong {
-      font-size: 14px;
-    }
-
-    td small {
-      display: block;
-      margin-top: 3px;
+    .story-line strong {
       color: var(--muted);
       font-size: 12px;
+      font-weight: 700;
+    }
+
+    .story-line span {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .story-empty {
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.46);
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      font-size: 13px;
+      line-height: 1.65;
+      color: var(--muted);
     }
 
     details {
-      margin: 0 24px 20px;
-      border-top: 1px solid var(--line);
-      padding-top: 14px;
+      border-top: 1px dashed rgba(20, 49, 74, 0.12);
+      padding-top: 8px;
+      margin-top: 2px;
     }
 
     summary {
       cursor: pointer;
-      list-style: none;
-      font-size: 14px;
-      font-weight: 700;
-    }
-
-    summary::-webkit-details-marker { display: none; }
-
-    .list {
-      display: grid;
-      gap: 10px;
-      margin-top: 14px;
-    }
-
-    .row {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 12px;
-      padding: 12px 0;
-      border-bottom: 1px dashed rgba(20, 49, 77, 0.08);
-    }
-
-    .row strong {
-      display: block;
-      font-size: 14px;
-      margin-bottom: 4px;
-    }
-
-    .row small,
-    .row div {
-      font-size: 12px;
+      font-size: 11px;
       color: var(--muted);
-      line-height: 1.55;
+      user-select: none;
     }
 
-    .log {
-      margin-top: 22px;
-      background: linear-gradient(180deg, #16263e 0%, #101824 100%);
-      color: #dce7ee;
-      border-radius: 30px;
-      padding: 20px 22px;
-      box-shadow: 0 24px 70px rgba(18, 23, 27, 0.2);
-    }
-
-    pre {
-      margin: 0;
-      min-height: 180px;
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-size: 12px;
+    .tech-copy {
+      margin-top: 8px;
+      display: grid;
+      gap: 6px;
+      font-size: 11px;
       line-height: 1.6;
-      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-    }
-
-    .faint {
       color: var(--muted);
-      font-size: 13px;
-      line-height: 1.6;
+      overflow-wrap: anywhere;
     }
 
-    a {
-      color: var(--true);
-      text-decoration: none;
-    }
-
-    @media (max-width: 1100px) {
+    @media (max-width: 1120px) {
       .hero,
-      .grid.two,
-      .iteration-top-layout,
-      .joint-grid,
-      .stats,
-      .controls,
-      .play-row,
-      .mini-grid {
+      .mainline-grid,
+      .projection-grid,
+      .joint-series-grid,
+      .story-grid {
         grid-template-columns: 1fr;
+        grid-template-areas:
+          "hero"
+          "metrics"
+          "heartbeat";
+      }
+
+      .hero-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .hero-glossary {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .shell {
+        padding: 18px 14px 28px;
+      }
+
+      .hero-summary-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .status-strip,
+      .summary-top {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .timestamp,
+      .panel-note {
+        text-align: left;
+        white-space: normal;
+      }
+
+      .direction-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .projection-toolbar {
+        align-items: stretch;
+      }
+
+      .projection-slider {
+        flex-basis: 100%;
+      }
+
+      .story-line {
+        grid-template-columns: 1fr;
+        gap: 4px;
       }
     }
   </style>
@@ -696,847 +1103,991 @@
 <body>
   <div class="shell">
     <section class="hero">
-      <div>
-        <div class="eyebrow">BCI Research Monitor</div>
-        <h1>Joint Angle AutoResearch</h1>
-        <div class="sub" id="hero-sub">当前主线显示第二个 sheet 的关节角，页面同时显示 frozen baseline、stable best、当前候选和多关节时间曲线。</div>
-      </div>
-      <div class="hero-side">
-        <div class="status-strip">
-          <div class="status-main">
-            <div id="status-dot" class="dot off"></div>
-            <div>
-              <div id="status-title" class="status-title">等待状态</div>
-              <div id="status-meta" class="status-meta">-</div>
+      <div class="hero-card panel">
+        <div class="hero-kicker">
+          <span class="brand-chip">AI-only</span>
+          <div class="eyebrow">AutoResearch 控制台</div>
+        </div>
+        <h1>AutoBci</h1>
+        <div id="hero-sub" class="sub">只看数据集、方法、阶段、时间、时长、最近一次正式效果，以及三个方向的 r / RMSE。</div>
+        <div class="hero-effect-note">
+          <strong>当前正式效果</strong>
+          <span id="hero-formal-note">-</span>
+          <div id="hero-effect-source" class="hero-formal-summary">-</div>
+          <div class="hero-glossary">
+            <div class="hero-glossary-item">
+              <div class="hero-glossary-key">val</div>
+              <div class="hero-glossary-copy">验证集分数，用来在循环里比较候选方案。</div>
+            </div>
+            <div class="hero-glossary-item">
+              <div class="hero-glossary-key">test</div>
+              <div class="hero-glossary-copy">留出审计分数，用来确认这条方法能不能泛化。</div>
+            </div>
+            <div class="hero-glossary-item">
+              <div class="hero-glossary-key">rollback</div>
+              <div class="hero-glossary-copy">这轮候选在进入正式比较前被撤回，所以不会有正式分数。</div>
             </div>
           </div>
-          <div id="updated-at" class="timestamp">-</div>
         </div>
-        <div class="status-strip">
-          <div>
-            <div class="status-title">主线状态</div>
-            <div id="frozen-baseline" class="status-meta">-</div>
-            <div id="accepted-best" class="status-meta">-</div>
-            <div id="leading-candidate" class="status-meta">-</div>
-            <div id="accepted-best-detail" class="status-meta">-</div>
-          </div>
-          <div style="text-align:right">
-            <div id="candidate-stage" class="status-title">-</div>
-            <div id="campaign-meta" class="status-meta">-</div>
-          </div>
+        <div class="hero-summary-grid">
+          <div class="hero-summary-row"><span class="hero-summary-label">数据集</span><span id="hero-dataset" class="hero-summary-value">-</span></div>
+          <div class="hero-summary-row"><span class="hero-summary-label">方法</span><span id="hero-method" class="hero-summary-value">-</span></div>
+          <div class="hero-summary-row"><span class="hero-summary-label">阶段</span><span id="hero-stage" class="hero-summary-value">-</span></div>
+          <div class="hero-summary-row"><span class="hero-summary-label">最近更新</span><span id="hero-time" class="hero-summary-value">-</span></div>
+          <div class="hero-summary-row"><span class="hero-summary-label">已运行时长</span><span id="hero-duration" class="hero-summary-value">-</span></div>
+          <div class="hero-summary-row"><span class="hero-summary-label">当前效果</span><span id="hero-effect" class="hero-summary-value">-</span></div>
         </div>
+      </div>
+      <div class="hero-side">
+        <section class="hero-mini-grid">
+          <div class="direction-card-shell panel">
+            <div class="mini-title">三个方向</div>
+            <div id="direction-source" class="mini-note">默认显示最近一次正式结果里的方向级指标。</div>
+            <div id="direction-grid" class="direction-grid">
+              <div class="direction-card"><div class="direction-label">X</div><div class="direction-value">本轮还没有方向级指标</div></div>
+              <div class="direction-card"><div class="direction-label">Y</div><div class="direction-value">本轮还没有方向级指标</div></div>
+              <div class="direction-card"><div class="direction-label">Z</div><div class="direction-value">本轮还没有方向级指标</div></div>
+            </div>
+          </div>
+
+          <div class="heartbeat-shell compact panel">
+            <div class="heartbeat-strip">
+              <div>
+                <div class="mini-title">轻量心跳</div>
+                <div id="memory-copy" class="mini-note">只看档位、占用、进程数和最近切档。</div>
+              </div>
+              <div id="memory-state" class="heartbeat-state off">未知</div>
+            </div>
+            <div class="heartbeat-grid">
+              <div class="heartbeat-item"><div class="heartbeat-label">AutoResearch 内存</div><div id="memory-percent" class="heartbeat-value">-</div></div>
+              <div class="heartbeat-item"><div class="heartbeat-label">活跃进程数</div><div id="memory-processes" class="heartbeat-value">-</div></div>
+              <div class="heartbeat-item"><div class="heartbeat-label">最近切档</div><div id="memory-transition" class="heartbeat-value">-</div></div>
+              <div class="heartbeat-item"><div class="heartbeat-label">排队任务</div><div id="memory-queued" class="heartbeat-value">-</div></div>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
 
-    <section class="panel" style="margin-bottom:22px;">
+    <section class="panel joint-breakdown-shell">
       <div class="panel-head">
-        <div class="panel-title">迭代记录</div>
-        <div class="panel-note">先看 agent 最近改了什么，再看结果和数据</div>
+        <div class="panel-title">关节拆分</div>
+        <div id="joint-breakdown-note" class="panel-note">把总平均拆成前肢 / 后肢和每个关节，避免整体分数把问题藏起来。</div>
       </div>
-      <div class="iteration-top-layout">
-        <div class="stack">
-          <div class="subpanel">
-            <div class="subpanel-head">
-              <div class="panel-title">当前 candidate</div>
-              <div class="panel-note">本轮候选</div>
-            </div>
-            <div class="mini-grid">
-              <div class="mini-card">
-                <div class="mini-card-label">run id</div>
-                <div id="candidate-run" class="mini-card-value">-</div>
-              </div>
-              <div class="mini-card">
-                <div class="mini-card-label">阶段</div>
-                <div id="candidate-phase" class="mini-card-value">-</div>
-              </div>
-              <div class="mini-card">
-                <div class="mini-card-label">Smoke Val CC</div>
-                <div id="candidate-smoke" class="mini-card-value">-</div>
-              </div>
-              <div class="mini-card">
-                <div class="mini-card-label">Formal Val CC</div>
-                <div id="candidate-formal" class="mini-card-value">-</div>
-              </div>
-            </div>
-            <div class="info-list compact" style="margin-top:12px;">
-              <div class="info-row"><span>这轮想法</span><span id="candidate-hypothesis">-</span></div>
-              <div class="info-row"><span>改动文件</span><span id="candidate-files">-</span></div>
-            </div>
-          </div>
-          <div class="subpanel">
-            <div class="subpanel-head">
-              <div class="panel-title">主线状态</div>
-              <div class="panel-note">baseline / stable best / candidate</div>
-            </div>
-            <div class="mini-grid">
-              <div class="mini-card">
-                <div class="mini-card-label">baseline</div>
-                <div id="frozen-baseline-top" class="mini-card-value">-</div>
-              </div>
-              <div class="mini-card">
-                <div class="mini-card-label">stable best</div>
-                <div id="accepted-best-top" class="mini-card-value">-</div>
-              </div>
-              <div class="mini-card">
-                <div class="mini-card-label">candidate</div>
-                <div id="leading-candidate-top" class="mini-card-value">-</div>
-              </div>
-              <div class="mini-card">
-                <div class="mini-card-label">detail</div>
-                <div id="campaign-meta-top" class="mini-card-value">-</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="subpanel">
-          <div class="subpanel-head">
-            <div class="panel-title">最近几轮</div>
-            <div class="panel-note">改动、理由、结果、结论</div>
-          </div>
-          <div id="iteration-list" class="iteration-list-top"></div>
-        </div>
+      <div id="limb-grid" class="limb-grid">
+        <div class="limb-card"><div class="limb-title">后肢</div><div class="limb-meta">当前还没有可读指标。</div></div>
+        <div class="limb-card"><div class="limb-title">前肢</div><div class="limb-meta">当前还没有可读指标。</div></div>
+      </div>
+      <div class="joint-table-wrap">
+        <table class="joint-table">
+          <thead>
+            <tr>
+              <th>分组</th>
+              <th>关节</th>
+              <th>val r</th>
+              <th>test r</th>
+              <th>gain</th>
+            </tr>
+          </thead>
+          <tbody id="joint-breakdown-body">
+            <tr><td colspan="5">当前还没有可读指标。</td></tr>
+          </tbody>
+        </table>
       </div>
     </section>
 
     <section class="panel">
       <div class="panel-head">
-        <div class="panel-title">当前结果</div>
-        <div id="metrics-source" class="panel-note">-</div>
+        <div class="panel-title">主线长期进展</div>
+        <div id="mainline-note" class="panel-note">这张图不依赖当前有没有在跑，会一直保留主线历史。</div>
       </div>
-      <div class="chips" id="top-chips"></div>
-      <div class="stats">
-        <div class="metric-card">
-          <div class="metric-label">Val CC</div>
-          <div id="val-r" class="metric-value">-</div>
-          <div class="metric-sub">验证集 zero-lag 相关系数</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Test CC</div>
-          <div id="test-r" class="metric-value">-</div>
-          <div class="metric-sub">测试集 zero-lag 相关系数</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Test MAE</div>
-          <div id="test-mae" class="metric-value">-</div>
-          <div class="metric-sub">平均绝对误差，单位度</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Test RMSE</div>
-          <div id="test-rmse" class="metric-value">-</div>
-          <div class="metric-sub">均方根误差，单位度</div>
-        </div>
-      </div>
-    </section>
-
-    <div class="grid two">
-      <section class="panel">
-        <div class="panel-head">
-          <div class="panel-title">数据集与当前目标</div>
-          <div id="dataset-name" class="panel-note">-</div>
-        </div>
-        <div class="info-list">
-          <div class="info-row"><span>当前目标类型</span><span id="target-mode">-</span></div>
-          <div class="info-row"><span>目标空间</span><span id="target-space">-</span></div>
-          <div class="info-row"><span>目标摘要</span><span id="target-summary">-</span></div>
-          <div class="info-row"><span>目标维度数</span><span id="target-dim-count">-</span></div>
-          <div class="info-row"><span>窗口 / 步长</span><span id="window-spec">-</span></div>
-          <div class="info-row"><span>最大 lag 诊断</span><span id="lag-spec">-</span></div>
-        </div>
-      </section>
-      <section class="panel">
-        <div class="panel-head">
-          <div class="panel-title">当前策略</div>
-          <div class="panel-note">memory/current_strategy.md</div>
-        </div>
-        <div class="chart-section">
-          <pre id="current-strategy" class="faint" style="min-height: 220px; color: var(--ink); font-family: ui-monospace, Menlo, monospace;"></pre>
-        </div>
-      </section>
-    </div>
-
-    <section class="panel" style="margin-top:22px;">
-      <div class="panel-head">
-        <div class="panel-title">多关节时间曲线</div>
-        <div id="preview-note" class="panel-note">-</div>
-      </div>
-      <div class="controls">
-        <div class="control-field">
-          <label for="preview-split">Split</label>
-          <select id="preview-split"></select>
-        </div>
-        <div class="control-field">
-          <label for="preview-session">Session</label>
-          <select id="preview-session"></select>
-        </div>
-        <div class="control-field" style="grid-column: span 2;">
-          <label>关节选择</label>
-          <div id="preview-joints" class="joint-picker"></div>
-        </div>
-      </div>
-      <div class="play-row">
-        <div class="control-field">
-          <label>时间播放</label>
-          <div class="play-actions">
-            <button id="play-btn" class="btn" type="button" data-active="false">播放</button>
-            <button id="reset-btn" class="btn" type="button">回到开头</button>
-          </div>
-        </div>
-        <div class="control-field">
-          <label for="progress">时间进度</label>
-          <input id="progress" type="range" min="0" max="0" step="1" value="0" />
-        </div>
-        <div class="control-field">
-          <label for="speed">播放速度</label>
-          <select id="speed">
-            <option value="0.5">0.5x</option>
-            <option value="1" selected>1x</option>
-            <option value="2">2x</option>
-            <option value="4">4x</option>
-          </select>
-        </div>
-        <div class="control-field">
-          <label>当前时间</label>
-          <div id="readout" class="readout">
-            <div class="readout-time">t = -</div>
-            <div class="readout-lines">
-              <div><strong style="color:#3f73a8">真实值</strong>-</div>
-              <div><strong style="color:#dd8b1d">模型预测</strong>-</div>
+      <div class="mainline-grid">
+        <div class="chart-card">
+          <div class="chart-head">
+            <div class="chart-title">
+              <div class="chart-label">主指标长期进展</div>
+              <div class="chart-value">主指标：验证集 mean Pearson r（零时滞宏平均，越高越好）</div>
+            </div>
+            <div class="chart-legend">
+              <span><i class="discarded"></i>没留下的尝试</span>
+              <span><i class="kept"></i>刷新历史最好</span>
+              <span><i class="running"></i>running best</span>
             </div>
           </div>
+          <div id="mainline-primary"></div>
         </div>
-      </div>
-      <div class="legend">
-        <div class="legend-item"><span class="legend-line" style="background:#3f73a8"></span>真实值</div>
-        <div class="legend-item"><span class="legend-line" style="background:#dd8b1d"></span>模型预测</div>
-      </div>
-      <div class="chart-section">
-        <div id="joint-chart-grid" class="joint-grid"></div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>关节</th>
-              <th>当前帧真实值</th>
-              <th>当前帧模型预测</th>
-              <th>当前帧差值</th>
-            </tr>
-          </thead>
-          <tbody id="joint-current-table"></tbody>
-        </table>
+        <div class="chart-card">
+          <div class="chart-head">
+            <div class="chart-title">
+              <div class="chart-label">验证 RMSE 长期进展</div>
+              <div class="chart-value">验证集 RMSE（越低越好）</div>
+            </div>
+            <div id="rmse-coverage" class="panel-note">-</div>
+          </div>
+          <div id="mainline-rmse"></div>
+        </div>
       </div>
     </section>
 
-    <div class="grid two">
-      <section class="panel">
-        <div class="panel-head">
-          <div class="panel-title">每个关节的结果</div>
-          <div class="panel-note">按关节角分别统计</div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>关节</th>
-                <th>Val CC</th>
-                <th>Test CC</th>
-                <th>Test MAE</th>
-                <th>Test RMSE</th>
-                <th>Best-lag CC</th>
-              </tr>
-            </thead>
-            <tbody id="joint-result-table"></tbody>
-          </table>
-        </div>
-      </section>
-      <section class="panel">
-        <div class="panel-head">
-          <div class="panel-title">本次使用数据</div>
-          <div id="manifest-note" class="panel-note">-</div>
-        </div>
-        <details open>
-          <summary>按日期汇总</summary>
-          <div id="manifest-list" class="list"></div>
-        </details>
-      </section>
-    </div>
+    <section class="panel" style="margin-top:20px;">
+      <div class="panel-head">
+        <div class="panel-title">xyz 平面投影回放</div>
+        <div id="projection-note" class="panel-note">当前还没有可播放的 xyz 坐标结果。</div>
+      </div>
+      <div id="projection-shell" class="projection-shell">
+        <div class="story-empty">当前还没有可播放的 xyz 坐标结果。</div>
+      </div>
+    </section>
 
-    <div class="grid two">
-      <section class="panel">
-        <div class="panel-head">
-          <div class="panel-title">通道质量</div>
-          <div id="channel-note" class="panel-note">-</div>
+    <section class="panel" style="margin-top:20px;">
+      <div class="panel-head">
+        <div class="panel-title">最近实验摘要</div>
+        <div class="panel-note">把最近有正式结果的实验和已撤回尝试分开看，未出 formal 的记录只按尝试看，不冒充正式结果。</div>
+      </div>
+      <div class="story-shell">
+        <div id="story-grid" class="story-grid">
+          <div class="story-empty">最近还没有可显示的正式结果或撤回尝试。</div>
         </div>
-        <details>
-          <summary>A / B 半区明细</summary>
-          <div id="channel-list" class="list"></div>
-        </details>
-      </section>
-      <section class="panel">
-        <div class="panel-head">
-          <div class="panel-title">关节 / Marker 质量</div>
-          <div id="kin-note" class="panel-note">-</div>
-        </div>
-        <details>
-          <summary>原始缺失和轨迹统计</summary>
-          <div id="kin-list" class="list"></div>
-        </details>
-      </section>
-    </div>
-
-    <div class="grid two">
-      <section class="log">
-        <div class="panel-head" style="padding:0 0 14px;border-bottom:none;color:#dce7ee;">
-          <div class="panel-title" style="color:#dce7ee;">训练日志尾部</div>
-          <div id="log-note" class="panel-note" style="color:rgba(220,231,238,0.72);">-</div>
-        </div>
-        <pre id="log-tail">等待日志</pre>
-      </section>
-      <section class="panel">
-        <div class="panel-head">
-          <div class="panel-title">产物文件</div>
-          <div class="panel-note">artifacts</div>
-        </div>
-        <details open>
-          <summary>最近文件</summary>
-          <div id="artifact-list" class="list"></div>
-        </details>
-      </section>
-    </div>
+      </div>
+    </section>
   </div>
 
   <script>
-    const TRUE_COLOR = "#3f73a8";
-    const PRED_COLOR = "#dd8b1d";
-    const state = {
-      latest: null,
-      selectedSplit: null,
-      selectedSessionId: null,
-      selectedJoints: [],
-      hoverIndex: 0,
-      isPlaying: false,
-      timer: null,
-      speed: 1,
+    const COLORS = {
+      ink: "#17324a",
+      muted: "#667481",
+      grid: "rgba(23, 50, 74, 0.10)",
+      discarded: "rgba(23, 50, 74, 0.16)",
+      kept: "#3e8b78",
+      keptStroke: "rgba(27, 91, 74, 0.42)",
+      running: "#73bca1",
+      reference: "#b8842d",
+      rmse: "#c66d2e",
+      truth: "#4e6fae",
+      truthFaint: "rgba(78, 111, 174, 0.18)",
+      prediction: "#c66d2e",
+      predictionFaint: "rgba(198, 109, 46, 0.18)",
+      branch0: "#9ba7b4",
+      branch0Fill: "rgba(155, 167, 180, 0.20)",
+      branch1: "#86a9c9",
+      branch1Fill: "rgba(134, 169, 201, 0.18)",
+      branch2: "#95b89f",
+      branch2Fill: "rgba(149, 184, 159, 0.18)",
     };
 
-    const fmt = (value, digits = 3) => {
-      const num = Number(value);
-      return Number.isFinite(num) ? num.toFixed(digits) : "-";
-    };
-
-    const fmtInt = (value) => {
-      const num = Number(value);
-      return Number.isFinite(num) ? num.toLocaleString("zh-CN") : "-";
-    };
-
-    const chip = (text, cls = "off") => `<span class="chip ${cls}">${text}</span>`;
-
-    function clamp(value, min, max) {
-      return Math.max(min, Math.min(max, value));
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
     }
 
-    function currentPreview() {
-      return state.latest?.prediction_preview || null;
+    function displayText(value, fallback = "-") {
+      const text = String(value ?? "").trim();
+      return text || fallback;
     }
 
-    function currentSession() {
-      const preview = currentPreview();
-      if (!preview?.available) return null;
-      const split = preview.splits?.[state.selectedSplit];
-      return (split?.sessions || []).find((row) => row.session_id === state.selectedSessionId) || null;
+    function fmt(value, digits = 4) {
+      const number = Number(value);
+      return Number.isFinite(number) ? number.toFixed(digits) : "-";
     }
 
-    function currentSeriesList() {
-      const session = currentSession();
-      if (!session) return [];
-      const names = session.kin_names || [];
-      const selected = state.selectedJoints.filter((name) => names.includes(name));
-      return selected.map((name) => {
-        const index = names.indexOf(name);
-        const trueRows = session.y_true || [];
-        const predRows = session.y_pred || [];
-        return {
-          label: name,
-          time: session.time_s || [],
-          true: trueRows.map((row) => row[index]),
-          pred: predRows.map((row) => row[index]),
-        };
+    function formatDurationText(value) {
+      const text = String(value ?? "").trim();
+      return text || "-";
+    }
+
+    function formatLocalDateTime(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return String(value);
+      }
+      return date.toLocaleString("zh-CN", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
       });
     }
 
-    function visibleRange(time, windowSeconds = 8) {
-      if (!time.length) return { start: 0, end: 0, current: 0 };
-      const dt = time.length >= 2 ? Math.max(Number(time[1]) - Number(time[0]), 0.05) : 0.2;
-      const windowSize = Math.max(10, Math.round(windowSeconds / dt) + 1);
-      const current = clamp(state.hoverIndex, 0, time.length - 1);
-      const end = current;
-      const start = Math.max(0, end - windowSize + 1);
-      return { start, end, current };
+    function statusTone(hasTraining, hasMission, stage) {
+      if (hasTraining) return "ok";
+      if (String(stage || "").toLowerCase() === "done") return "off";
+      return hasMission ? "warn" : "off";
     }
 
-    function lineLabel({ x, y, text, fill }) {
+    function yScale(values, higherIsBetter) {
+      if (!values.length) {
+        return { min: 0, max: 1 };
+      }
+      let min = Math.min(...values);
+      let max = Math.max(...values);
+      if (min === max) {
+        const pad = Math.abs(min || 1) * 0.05 || 0.05;
+        min -= pad;
+        max += pad;
+      }
+      return { min, max, higherIsBetter };
+    }
+
+    function pointY(value, scale, top, height) {
+      if (!Number.isFinite(value)) return top + height / 2;
+      if (scale.higherIsBetter) {
+        return top + ((scale.max - value) / (scale.max - scale.min)) * height;
+      }
+      return top + ((value - scale.min) / (scale.max - scale.min)) * height;
+    }
+
+    function pointX(pct, left, width) {
+      const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
+      return left + (clamped / 100) * width;
+    }
+
+    function buildStepPath(points, scale, left, top, width, height) {
+      if (!Array.isArray(points) || !points.length) return "";
+      const commands = [];
+      points.forEach((point, index) => {
+        const x = pointX(point.x_pct, left, width);
+        const y = pointY(Number(point.value), scale, top, height);
+        if (index === 0) {
+          commands.push(`M ${x} ${y}`);
+          return;
+        }
+        commands.push(`H ${x}`);
+        commands.push(`V ${y}`);
+      });
+      return commands.join(" ");
+    }
+
+    function buildLinePath(points, scale, left, top, width, height) {
+      if (!Array.isArray(points) || !points.length) return "";
+      const commands = [];
+      points.forEach((point, index) => {
+        const x = pointX(point.x_pct, left, width);
+        const y = pointY(Number(point.value), scale, top, height);
+        commands.push(`${index === 0 ? "M" : "L"} ${x} ${y}`);
+      });
+      return commands.join(" ");
+    }
+
+    function branchPalette(index) {
+      const palette = [
+        { stroke: COLORS.branch0, fill: COLORS.branch0Fill },
+        { stroke: COLORS.branch1, fill: COLORS.branch1Fill },
+        { stroke: COLORS.branch2, fill: COLORS.branch2Fill },
+      ];
+      return palette[index % palette.length];
+    }
+
+    function paletteForOverlay(overlay, index) {
+      const token = String(overlay?.color_token || "").trim();
+      if (token && COLORS[token]) {
+        const fillToken = `${token}Fill`;
+        return {
+          stroke: COLORS[token],
+          fill: COLORS[fillToken] || COLORS.branch0Fill,
+        };
+      }
+      return branchPalette(index);
+    }
+
+    function renderChart(plot, options = {}) {
+      const points = Array.isArray(plot?.points) ? plot.points : [];
+      const running = Array.isArray(plot?.running_best) ? plot.running_best : [];
+      const overlays = Array.isArray(plot?.overlays) ? plot.overlays : [];
+      const axisDays = Array.isArray(plot?.axis?.days) ? plot.axis.days : [];
+      if (!points.length) {
+        return `<div class="summary-empty">这张图当前还没有真实点。</div>`;
+      }
+
+      const width = 680;
+      const height = 280;
+      const left = 54;
+      const right = 18;
+      const top = 18;
+      const bottom = 34;
+      const innerWidth = width - left - right;
+      const innerHeight = height - top - bottom;
+      const allValues = [
+        ...points.map((item) => Number(item.value)).filter((item) => Number.isFinite(item)),
+        ...running.map((item) => Number(item.value)).filter((item) => Number.isFinite(item)),
+        ...overlays.flatMap((overlay) => (Array.isArray(overlay?.points) ? overlay.points : []).map((item) => Number(item.value)).filter((item) => Number.isFinite(item))),
+      ];
+      const scale = yScale(allValues, Boolean(plot?.higher_is_better));
+      const stepPath = buildStepPath(running, scale, left, top, innerWidth, innerHeight);
+      const gridLines = [0, 0.25, 0.5, 0.75, 1].map((fraction) => {
+        const y = top + innerHeight * fraction;
+        const value = scale.higherIsBetter
+          ? scale.max - (scale.max - scale.min) * fraction
+          : scale.min + (scale.max - scale.min) * fraction;
+        return {
+          y,
+          label: fmt(value, options.digits || 4),
+        };
+      });
+
+      const svg = `
+        <svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(options.label || "chart")}">
+          ${gridLines.map((line) => `
+            <line x1="${left}" y1="${line.y}" x2="${width - right}" y2="${line.y}" stroke="${COLORS.grid}" stroke-width="1" />
+            <text x="${left - 8}" y="${line.y + 4}" text-anchor="end" fill="${COLORS.muted}" font-size="11">${escapeHtml(line.label)}</text>
+          `).join("")}
+          ${axisDays.map((day) => {
+            const x = pointX(day.start_pct, left, innerWidth);
+            return `<line x1="${x}" y1="${top}" x2="${x}" y2="${height - bottom}" stroke="${COLORS.grid}" stroke-width="1" />`;
+          }).join("")}
+          ${overlays.map((overlay, index) => {
+            const palette = paletteForOverlay(overlay, index);
+            const overlayPoints = Array.isArray(overlay?.points) ? overlay.points : [];
+            const overlayPath = buildLinePath(overlayPoints, scale, left, top, innerWidth, innerHeight);
+            return `
+              ${overlayPath ? `<path d="${overlayPath}" fill="none" stroke="${palette.stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.9" />` : ""}
+              ${overlayPoints.map((point) => {
+                const x = pointX(point.x_pct, left, innerWidth);
+                const y = pointY(Number(point.value), scale, top, innerHeight);
+                const title = [overlay.label || "-", point.recorded_at_local || point.recorded_at || "-", point.value_label || "-", point.label || point.run_id || "-"].join(" · ");
+                return `
+                  <g>
+                    <title>${escapeHtml(title)}</title>
+                    <circle cx="${x}" cy="${y}" r="3.3" fill="${palette.fill}" stroke="${palette.stroke}" stroke-width="1.1" />
+                  </g>
+                `;
+              }).join("")}
+            `;
+          }).join("")}
+          ${stepPath ? `<path d="${stepPath}" fill="none" stroke="${options.runningColor || COLORS.running}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />` : ""}
+          ${points.map((point) => {
+            const x = pointX(point.x_pct, left, innerWidth);
+            const y = pointY(Number(point.value), scale, top, innerHeight);
+            const fill = point.is_running_best ? COLORS.kept : COLORS.discarded;
+            const stroke = point.is_running_best ? COLORS.keptStroke : "rgba(20, 49, 74, 0.12)";
+            const radius = point.is_running_best ? 5.5 : 3.5;
+            const title = [point.recorded_at_local || point.recorded_at || "-", point.value_label || "-", point.label || point.run_id || "-"].join(" · ");
+            return `
+              <g>
+                <title>${escapeHtml(title)}</title>
+                <circle cx="${x}" cy="${y}" r="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="1.2" />
+              </g>
+            `;
+          }).join("")}
+        </svg>
+      `;
+
+      const axis = `
+        <div class="chart-axis">
+          ${axisDays.map((day) => `<span style="left:${day.start_pct}%">${escapeHtml(day.label)}</span>`).join("")}
+        </div>
+      `;
+
+      const overlayCopy = overlays.length && !options.hideOverlayCopy
+        ? ` 支线会用淡灰、浅蓝、浅绿叠加显示，方便和正式主线区分。`
+        : "";
+      const overlayLegend = overlays.length
+        ? `
+          <div class="chart-overlay-legend">
+            ${overlays.map((overlay, index) => {
+              const palette = paletteForOverlay(overlay, index);
+              return `
+                <span class="chart-overlay-chip">
+                  <i style="border-top-color:${palette.stroke}"></i>
+                  ${escapeHtml(overlay.label || `支线 ${index + 1}`)}
+                </span>
+              `;
+            }).join("")}
+          </div>
+        `
+        : "";
+
       return `
-        <g>
-          <rect x="${x - 68}" y="${y - 10}" width="68" height="20" rx="10" fill="rgba(255,255,255,0.88)" stroke="${fill}" stroke-opacity="0.2"></rect>
-          <text x="${x - 8}" y="${y + 4}" text-anchor="end" font-size="11" font-weight="700" fill="${fill}">${text}</text>
-        </g>
-      `;
-    }
-
-    function svgPoints(values, width, height, padX, padY, min, max) {
-      const span = Math.max(max - min, 1e-6);
-      return values.map((value, idx) => {
-        const x = padX + ((width - padX * 2) * idx) / Math.max(values.length - 1, 1);
-        const y = height - padY - ((value - min) / span) * (height - padY * 2);
-        return `${x},${y}`;
-      }).join(" ");
-    }
-
-    function updatePlaybackControls() {
-      const session = currentSession();
-      const slider = document.getElementById("progress");
-      const speed = document.getElementById("speed");
-      const playBtn = document.getElementById("play-btn");
-      const readout = document.getElementById("readout");
-      if (!session?.time_s?.length) {
-        slider.max = 0;
-        slider.value = 0;
-        playBtn.textContent = "播放";
-        playBtn.dataset.active = "false";
-        readout.innerHTML = `
-          <div class="readout-time">t = -</div>
-          <div class="readout-lines">
-            <div><strong style="color:${TRUE_COLOR}">真实值</strong>-</div>
-            <div><strong style="color:${PRED_COLOR}">模型预测</strong>-</div>
-          </div>
-        `;
-        return;
-      }
-      const idx = clamp(state.hoverIndex, 0, session.time_s.length - 1);
-      slider.max = Math.max(session.time_s.length - 1, 0);
-      slider.value = idx;
-      speed.value = String(state.speed);
-      playBtn.textContent = state.isPlaying ? "暂停" : "播放";
-      playBtn.dataset.active = state.isPlaying ? "true" : "false";
-      const seriesList = currentSeriesList();
-      const trueText = seriesList.slice(0, 3).map((row) => `${row.label} ${fmt(row.true[idx], 2)}°`).join(" · ");
-      const predText = seriesList.slice(0, 3).map((row) => `${row.label} ${fmt(row.pred[idx], 2)}°`).join(" · ");
-      const more = seriesList.length > 3 ? ` · +${seriesList.length - 3}` : "";
-      readout.innerHTML = `
-        <div class="readout-time">t = ${fmt(session.time_s[idx], 1)} s · 第 ${idx + 1} / ${session.time_s.length} 帧</div>
-        <div class="readout-lines">
-          <div><strong style="color:${TRUE_COLOR}">真实值</strong>${trueText || "-"}${more}</div>
-          <div><strong style="color:${PRED_COLOR}">模型预测</strong>${predText || "-"}${more}</div>
+        ${svg}
+        <div class="chart-foot">
+          ${axis}
+          ${overlayLegend}
+          <div class="chart-copy">${escapeHtml((options.copy || "") + overlayCopy)}</div>
         </div>
       `;
     }
 
-    function stopPlayback() {
-      if (state.timer) {
-        window.clearInterval(state.timer);
-        state.timer = null;
+    function renderDirectionGrid(axisSummary) {
+      const grid = document.getElementById("direction-grid");
+      const source = document.getElementById("direction-source");
+      const axes = Array.isArray(axisSummary?.axes) ? axisSummary.axes : [];
+      source.textContent = axisSummary?.available
+        ? `${displayText(axisSummary.method_label, "最近结果")} · ${displayText(axisSummary.recorded_at_local, "-")} · val = 验证集，test = 留出审计`
+        : "本轮还没有方向级指标。";
+      grid.innerHTML = ["x", "y", "z"].map((axis) => {
+        const item = axes.find((entry) => String(entry?.axis || "").toLowerCase() === axis);
+        const value = item
+          ? `
+            <div class="direction-metric"><span>val r</span><strong>${escapeHtml(item.val_r_label || "-")}</strong></div>
+            <div class="direction-metric"><span>val RMSE</span><strong>${escapeHtml(item.val_rmse_label || "-")}</strong></div>
+            ${item.test_r != null || item.test_rmse != null ? `
+              <div class="direction-metric"><span>test r</span><small>${escapeHtml(item.test_r_label || "-")}</small></div>
+              <div class="direction-metric"><span>test RMSE</span><small>${escapeHtml(item.test_rmse_label || "-")}</small></div>
+            ` : ""}
+          `
+          : `<div class="direction-metric"><span>当前状态</span><small>本轮还没有方向级指标</small></div>`;
+        return `
+          <div class="direction-card">
+            <div class="direction-label">${axis.toUpperCase()}</div>
+            <div class="direction-value">${value}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderJointBreakdown(jointBreakdown) {
+      const note = document.getElementById("joint-breakdown-note");
+      const limbGrid = document.getElementById("limb-grid");
+      const body = document.getElementById("joint-breakdown-body");
+      const limbs = Array.isArray(jointBreakdown?.limb_summary) ? jointBreakdown.limb_summary : [];
+      const perJoint = Array.isArray(jointBreakdown?.per_joint) ? jointBreakdown.per_joint : [];
+      if (note) {
+        note.textContent = displayText(jointBreakdown?.note, "把总平均拆成前肢 / 后肢和每个关节，避免整体分数把问题藏起来。");
       }
-      state.isPlaying = false;
+      if (limbGrid) {
+        limbGrid.innerHTML = limbs.length
+          ? limbs.map((item) => `
+              <div class="limb-card">
+                <div class="limb-title">${escapeHtml(displayText(item.label, "-"))}</div>
+                <div class="limb-meta">${escapeHtml((Array.isArray(item.joint_names) ? item.joint_names.join(" / ") : "") || "当前没有关节列表")}</div>
+                <div class="limb-metric-row"><span>val r</span><strong>${escapeHtml(item.val_r_label || "-")}</strong></div>
+                <div class="limb-metric-row"><span>test r</span><strong>${escapeHtml(item.test_r_label || "-")}</strong></div>
+              </div>
+            `).join("")
+          : `<div class="limb-card"><div class="limb-title">当前状态</div><div class="limb-meta">当前还没有可读的前后肢拆分结果。</div></div>`;
+      }
+      if (body) {
+        const groupName = (name) => (["Hip", "Kne", "Ank", "Mtp"].includes(name) ? "后肢" : (["Sho", "Elb", "Wri", "Mcp"].includes(name) ? "前肢" : "其他"));
+        body.innerHTML = perJoint.length
+          ? perJoint.map((item) => `
+              <tr>
+                <td class="group">${escapeHtml(groupName(String(item.name || "")))}</td>
+                <td>${escapeHtml(displayText(item.name, "-"))}</td>
+                <td class="metric">${escapeHtml(item.val_r_label || "-")}</td>
+                <td class="metric">${escapeHtml(item.test_r_label || "-")}</td>
+                <td class="metric">${escapeHtml(item.gain_label || "-")}</td>
+              </tr>
+            `).join("")
+          : `<tr><td colspan="5">当前还没有可读指标。</td></tr>`;
+      }
     }
 
-    function redraw() {
-      renderJointCharts();
-      renderCurrentFrameTable();
-      updatePlaybackControls();
+    function renderMemoryGuard(memoryGuard) {
+      const state = String(memoryGuard?.state || "").toLowerCase();
+      const tone = state === "healthy" ? "ok" : (state === "high" || state === "critical" ? "warn" : "off");
+      document.getElementById("memory-state").textContent = displayText(memoryGuard?.label, "未知");
+      document.getElementById("memory-state").className = `heartbeat-state ${tone}`;
+      document.getElementById("memory-copy").textContent = Number.isFinite(Number(memoryGuard?.used_percent))
+        ? `AutoResearch 当前大约占用 ${fmt(memoryGuard.used_percent, 1)}% 内存。`
+        : "只看档位、占用、进程数和最近切档。";
+      document.getElementById("memory-percent").textContent = Number.isFinite(Number(memoryGuard?.used_percent))
+        ? `${fmt(memoryGuard.used_percent, 1)}%`
+        : "-";
+      document.getElementById("memory-processes").textContent = Number.isFinite(Number(memoryGuard?.process_count))
+        ? String(memoryGuard.process_count)
+        : "-";
+      document.getElementById("memory-transition").textContent = memoryGuard?.last_transition_at
+        ? formatLocalDateTime(memoryGuard.last_transition_at)
+        : "-";
+      document.getElementById("memory-queued").textContent = Number.isFinite(Number(memoryGuard?.queued_count))
+        ? String(memoryGuard.queued_count)
+        : "-";
     }
 
-    function startPlayback() {
-      const session = currentSession();
-      if (!session?.time_s?.length) return;
-      const dt = session.time_s.length >= 2 ? Math.max(Number(session.time_s[1]) - Number(session.time_s[0]), 0.05) : 0.2;
-      const stepMs = Math.max(40, Math.round((dt * 1000) / Math.max(state.speed, 0.25)));
-      stopPlayback();
-      state.isPlaying = true;
-      state.timer = window.setInterval(() => {
-        const active = currentSession();
-        if (!active?.time_s?.length) {
-          stopPlayback();
-          redraw();
+    function renderMainlineHistory(mainlineProgress) {
+      const progress = mainlineProgress || {};
+      document.getElementById("mainline-note").textContent = progress?.available
+        ? `长期主线共 ${progress.row_count || 0} 个真实历史点。横轴按天等宽，同一天内部按真实时刻落位。`
+        : "暂时还没有主线历史点，但参考线会继续保留。";
+      document.getElementById("rmse-coverage").textContent = "主线用深色，支线用浅色，方便和正式主线区分。";
+      document.getElementById("mainline-primary").innerHTML = renderChart(progress?.plots?.primary || {}, {
+        label: "主指标长期进展",
+        digits: 4,
+        runningColor: COLORS.running,
+        copy: `最新主线：${displayText(progress?.latest_summary, "还没有真实主线实验点")}`,
+      });
+      document.getElementById("mainline-rmse").innerHTML = renderChart(progress?.plots?.val_rmse || {}, {
+        label: "验证 RMSE 长期进展",
+        digits: 3,
+        runningColor: COLORS.rmse,
+        copy: "主线用深色，支线用浅色，方便和正式主线区分。",
+        hideOverlayCopy: true,
+      });
+    }
+
+    const projectionState = {
+      payload: null,
+      frame: 0,
+      timer: null,
+      speed: 1,
+      marker: null,
+    };
+
+    function stopProjectionPlayback() {
+      if (projectionState.timer) {
+        clearInterval(projectionState.timer);
+        projectionState.timer = null;
+      }
+    }
+
+    function startProjectionPlayback() {
+      const payload = projectionState.payload;
+      if (!payload?.available) return;
+      const intervalBase = Number(payload.default_interval_ms || 90);
+      const speed = Number(projectionState.speed || 1);
+      const interval = Math.max(24, Math.round(intervalBase / (speed > 0 ? speed : 1)));
+      projectionState.timer = setInterval(() => {
+        projectionState.frame += 1;
+        if (projectionState.frame >= Number(payload.frame_count || 1)) {
+          projectionState.frame = 0;
+        }
+        renderProjectionFrame();
+      }, interval);
+    }
+
+    function projectionX(value, bounds, left, width) {
+      const span = (bounds.max_x - bounds.min_x) || 1;
+      return left + ((Number(value) - bounds.min_x) / span) * width;
+    }
+
+    function projectionY(value, bounds, top, height) {
+      const span = (bounds.max_y - bounds.min_y) || 1;
+      return top + ((bounds.max_y - Number(value)) / span) * height;
+    }
+
+    function projectionTimeBounds(times) {
+      const numeric = Array.isArray(times) ? times.map((value) => Number(value)).filter((value) => Number.isFinite(value)) : [];
+      if (!numeric.length) {
+        return { min: 0, max: 1 };
+      }
+      const min = Math.min(...numeric);
+      const max = Math.max(...numeric);
+      return min === max ? { min, max: min + 1 } : { min, max };
+    }
+
+    function projectionTimeX(value, bounds, left, width) {
+      const span = (bounds.max - bounds.min) || 1;
+      return left + ((Number(value) - bounds.min) / span) * width;
+    }
+
+    function buildProjectionSegments(points, edges, bounds, left, top, width, height, { stroke, strokeWidth, dashArray = "", opacity = 1 } = {}) {
+      if (!points || !Array.isArray(edges) || !edges.length) return "";
+      return edges.map((edge) => {
+        const [start, end] = Array.isArray(edge) ? edge : [];
+        const pointA = start ? points[start] : null;
+        const pointB = end ? points[end] : null;
+        if (!pointA || !pointB) return "";
+        return `<line x1="${projectionX(pointA.x, bounds, left, width)}" y1="${projectionY(pointA.y, bounds, top, height)}" x2="${projectionX(pointB.x, bounds, left, width)}" y2="${projectionY(pointB.y, bounds, top, height)}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" ${dashArray ? `stroke-dasharray="${dashArray}"` : ""} opacity="${opacity}" />`;
+      }).join("");
+    }
+
+    function buildProjectionJoints(points, bounds, left, top, width, height, { fill, stroke, radius = 4.2, opacity = 1 } = {}) {
+      if (!points || typeof points !== "object") return "";
+      return Object.entries(points).map(([marker, point]) => {
+        if (!point) return "";
+        const cx = projectionX(point.x, bounds, left, width);
+        const cy = projectionY(point.y, bounds, top, height);
+        return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="1.2" opacity="${opacity}"><title>${escapeHtml(marker)}</title></circle>`;
+      }).join("");
+    }
+
+    function buildJointSeriesPath(values, times, valueScale, timeScale, left, top, width, height) {
+      if (!Array.isArray(values) || !Array.isArray(times) || !values.length || !times.length) return "";
+      const commands = [];
+      let drawing = false;
+      values.forEach((value, index) => {
+        const numeric = Number(value);
+        const t = Number(times[index]);
+        if (!Number.isFinite(numeric) || !Number.isFinite(t)) {
+          drawing = false;
           return;
         }
-        if (state.hoverIndex >= active.time_s.length - 1) {
-          stopPlayback();
-          redraw();
-          return;
-        }
-        state.hoverIndex += 1;
-        redraw();
-      }, stepMs);
-      updatePlaybackControls();
+        const x = projectionTimeX(t, timeScale, left, width);
+        const y = pointY(numeric, valueScale, top, height);
+        commands.push(`${drawing ? "L" : "M"} ${x} ${y}`);
+        drawing = true;
+      });
+      return commands.join(" ");
     }
 
-    function syncControls(data) {
-      const preview = data.prediction_preview;
-      const dataset = data.dataset || {};
-      const splitSelect = document.getElementById("preview-split");
-      const sessionSelect = document.getElementById("preview-session");
-      const jointWrap = document.getElementById("preview-joints");
-      const note = document.getElementById("preview-note");
+    function renderProjectionSvg(plane, frameIndex) {
+      const width = 360;
+      const height = 260;
+      const left = 42;
+      const right = 18;
+      const top = 16;
+      const bottom = 30;
+      const innerWidth = width - left - right;
+      const innerHeight = height - top - bottom;
+      const bounds = plane?.bounds || { min_x: -1, max_x: 1, min_y: -1, max_y: 1 };
+      const frames = Array.isArray(plane?.frames) ? plane.frames : [];
+      const safeFrame = Math.max(0, Math.min(frameIndex, Math.max(0, frames.length - 1)));
+      const currentFrame = frames[safeFrame] || {};
+      const previousFrame = frames[Math.max(0, safeFrame - 1)] || null;
+      const currentTrue = currentFrame.true_points || {};
+      const currentPred = currentFrame.pred_points || {};
+      const previousTrue = previousFrame?.true_points || {};
+      const previousPred = previousFrame?.pred_points || {};
+      const edges = Array.isArray(plane?.edges) ? plane.edges : (Array.isArray(projectionState.payload?.edges) ? projectionState.payload.edges : []);
+      const xTicks = [0, 0.5, 1].map((fraction) => ({
+        x: left + innerWidth * fraction,
+        label: fmt(bounds.min_x + (bounds.max_x - bounds.min_x) * fraction, 1),
+      }));
+      const yTicks = [0, 0.5, 1].map((fraction) => ({
+        y: top + innerHeight * fraction,
+        label: fmt(bounds.max_y - (bounds.max_y - bounds.min_y) * fraction, 1),
+      }));
 
+      return `
+        <svg class="projection-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(plane?.title || "projection")}">
+          ${xTicks.map((tick) => `
+            <line x1="${tick.x}" y1="${top}" x2="${tick.x}" y2="${height - bottom}" stroke="${COLORS.grid}" stroke-width="1" />
+            <text x="${tick.x}" y="${height - 8}" text-anchor="middle" fill="${COLORS.muted}" font-size="11">${escapeHtml(tick.label)}</text>
+          `).join("")}
+          ${yTicks.map((tick) => `
+            <line x1="${left}" y1="${tick.y}" x2="${width - right}" y2="${tick.y}" stroke="${COLORS.grid}" stroke-width="1" />
+            <text x="${left - 8}" y="${tick.y + 4}" text-anchor="end" fill="${COLORS.muted}" font-size="11">${escapeHtml(tick.label)}</text>
+          `).join("")}
+          ${buildProjectionSegments(previousPred, edges, bounds, left, top, innerWidth, innerHeight, { stroke: COLORS.predictionFaint, strokeWidth: 2.1, dashArray: "5 5", opacity: 0.4 })}
+          ${buildProjectionSegments(previousTrue, edges, bounds, left, top, innerWidth, innerHeight, { stroke: COLORS.truthFaint, strokeWidth: 2.1, opacity: 0.45 })}
+          ${buildProjectionSegments(currentPred, edges, bounds, left, top, innerWidth, innerHeight, { stroke: COLORS.prediction, strokeWidth: 2.8, dashArray: "6 5", opacity: 0.95 })}
+          ${buildProjectionSegments(currentTrue, edges, bounds, left, top, innerWidth, innerHeight, { stroke: COLORS.truth, strokeWidth: 3.2, opacity: 0.95 })}
+          ${buildProjectionJoints(currentPred, bounds, left, top, innerWidth, innerHeight, { fill: COLORS.prediction, stroke: "rgba(255,255,255,0.88)", radius: 4.2, opacity: 0.95 })}
+          ${buildProjectionJoints(currentTrue, bounds, left, top, innerWidth, innerHeight, { fill: COLORS.truth, stroke: "rgba(255,255,255,0.92)", radius: 4.6, opacity: 0.95 })}
+          <text x="${left}" y="${top - 2}" fill="${COLORS.muted}" font-size="11">${escapeHtml(plane?.y_label || "-")}</text>
+          <text x="${width - right}" y="${height - 8}" text-anchor="end" fill="${COLORS.muted}" font-size="11">${escapeHtml(plane?.x_label || "-")}</text>
+        </svg>
+      `;
+    }
+
+    function renderJointSeriesSvg(axisPayload, times, frameIndex) {
+      const width = 360;
+      const height = 190;
+      const left = 44;
+      const right = 16;
+      const top = 16;
+      const bottom = 30;
+      const innerWidth = width - left - right;
+      const innerHeight = height - top - bottom;
+      const trueValues = Array.isArray(axisPayload?.true) ? axisPayload.true.map((value) => Number(value)) : [];
+      const predValues = Array.isArray(axisPayload?.pred) ? axisPayload.pred.map((value) => Number(value)) : [];
+      const numericValues = [...trueValues, ...predValues].filter((value) => Number.isFinite(value));
+      const valueScale = yScale(numericValues, false);
+      const timeScale = projectionTimeBounds(times);
+      const safeFrame = Math.max(0, Math.min(frameIndex, Math.max(0, times.length - 1)));
+      const currentTime = Number(times[safeFrame]);
+      const currentTrue = Number(trueValues[safeFrame]);
+      const currentPred = Number(predValues[safeFrame]);
+      const gridLines = [0, 0.25, 0.5, 0.75, 1].map((fraction) => {
+        const y = top + innerHeight * fraction;
+        const value = valueScale.min + (valueScale.max - valueScale.min) * fraction;
+        return { y, label: fmt(value, 1) };
+      });
+      const xTicks = [0, 0.5, 1].map((fraction) => {
+        const value = timeScale.min + (timeScale.max - timeScale.min) * fraction;
+        return {
+          x: left + innerWidth * fraction,
+          label: `${fmt(value, 2)} s`,
+        };
+      });
+      const cursorX = Number.isFinite(currentTime) ? projectionTimeX(currentTime, timeScale, left, innerWidth) : left;
+      const truePath = buildJointSeriesPath(trueValues, times, valueScale, timeScale, left, top, innerWidth, innerHeight);
+      const predPath = buildJointSeriesPath(predValues, times, valueScale, timeScale, left, top, innerWidth, innerHeight);
+
+      return `
+        <svg class="projection-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(axisPayload?.label || "joint series")}">
+          ${gridLines.map((line) => `
+            <line x1="${left}" y1="${line.y}" x2="${width - right}" y2="${line.y}" stroke="${COLORS.grid}" stroke-width="1" />
+            <text x="${left - 8}" y="${line.y + 4}" text-anchor="end" fill="${COLORS.muted}" font-size="11">${escapeHtml(line.label)}</text>
+          `).join("")}
+          ${xTicks.map((tick) => `
+            <line x1="${tick.x}" y1="${top}" x2="${tick.x}" y2="${height - bottom}" stroke="${COLORS.grid}" stroke-width="1" />
+            <text x="${tick.x}" y="${height - 8}" text-anchor="middle" fill="${COLORS.muted}" font-size="11">${escapeHtml(tick.label)}</text>
+          `).join("")}
+          <line x1="${cursorX}" y1="${top}" x2="${cursorX}" y2="${height - bottom}" stroke="rgba(23, 50, 74, 0.18)" stroke-width="1.5" stroke-dasharray="4 4" />
+          ${truePath ? `<path d="${truePath}" fill="none" stroke="${COLORS.truth}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />` : ""}
+          ${predPath ? `<path d="${predPath}" fill="none" stroke="${COLORS.prediction}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 4" />` : ""}
+          ${Number.isFinite(currentTrue) && Number.isFinite(currentTime) ? `<circle cx="${projectionTimeX(currentTime, timeScale, left, innerWidth)}" cy="${pointY(currentTrue, valueScale, top, innerHeight)}" r="4.6" fill="${COLORS.truth}" stroke="rgba(255,255,255,0.95)" stroke-width="1.4" />` : ""}
+          ${Number.isFinite(currentPred) && Number.isFinite(currentTime) ? `<circle cx="${projectionTimeX(currentTime, timeScale, left, innerWidth)}" cy="${pointY(currentPred, valueScale, top, innerHeight)}" r="4.2" fill="${COLORS.prediction}" stroke="rgba(255,255,255,0.92)" stroke-width="1.2" />` : ""}
+          <text x="${left}" y="${top - 2}" fill="${COLORS.muted}" font-size="11">位移</text>
+          <text x="${width - right}" y="${height - 8}" text-anchor="end" fill="${COLORS.muted}" font-size="11">时间</text>
+        </svg>
+      `;
+    }
+
+    function renderJointSeriesFrame() {
+      const payload = projectionState.payload;
+      const grid = document.getElementById("joint-series-grid");
+      const markerSelect = document.getElementById("joint-series-marker");
+      const note = document.getElementById("joint-series-note");
+      if (!payload?.available || !grid) return;
+      const jointSeries = payload.joint_series || {};
+      const markerOrder = Array.isArray(jointSeries.marker_order) ? jointSeries.marker_order : [];
+      const markers = jointSeries.markers || {};
+      const fallbackMarker = jointSeries.default_marker || markerOrder[0] || null;
+      const selectedMarker = markers[projectionState.marker] ? projectionState.marker : fallbackMarker;
+      projectionState.marker = selectedMarker;
+      if (markerSelect && selectedMarker) markerSelect.value = selectedMarker;
+      if (!selectedMarker || !markers[selectedMarker]) {
+        grid.innerHTML = `<div class="story-empty">当前还没有单关节位移时间图。</div>`;
+        return;
+      }
+      const markerSeries = markers[selectedMarker];
+      const times = Array.isArray(jointSeries.time) ? jointSeries.time : [];
+      const safeFrame = Math.max(0, Math.min(projectionState.frame, Math.max(0, times.length - 1)));
+      const currentTime = Number(times[safeFrame]);
+      if (note) {
+        note.textContent = Number.isFinite(currentTime)
+          ? `${selectedMarker} · 第 ${safeFrame + 1} 帧 · ${fmt(currentTime, 2)} s`
+          : `${selectedMarker} · 当前帧`;
+      }
+      grid.innerHTML = ["x", "y", "z"].map((axis) => {
+        const axisPayload = markerSeries.axes?.[axis];
+        if (!axisPayload) return "";
+        const currentTrue = Array.isArray(axisPayload.true) ? axisPayload.true[safeFrame] : null;
+        const currentPred = Array.isArray(axisPayload.pred) ? axisPayload.pred[safeFrame] : null;
+        return `
+          <article class="joint-series-card">
+            <div class="joint-series-card-head">
+              <div class="joint-series-card-title">${escapeHtml(displayText(axisPayload.label, axis.toUpperCase()))}</div>
+              <div class="joint-series-card-meta">当前真值 ${escapeHtml(fmt(currentTrue, 2))} · 预测 ${escapeHtml(fmt(currentPred, 2))}</div>
+            </div>
+            ${renderJointSeriesSvg(axisPayload, times, safeFrame)}
+            <div class="joint-series-legend">
+              <span style="color:${COLORS.truth}"><i></i>真实位移</span>
+              <span style="color:${COLORS.prediction}"><i></i>预测位移</span>
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderProjectionFrame() {
+      const payload = projectionState.payload;
+      if (!payload?.available) return;
+      const frame = Math.max(0, Math.min(projectionState.frame, Number(payload.frame_count || 1) - 1));
+      projectionState.frame = frame;
+      const slider = document.getElementById("projection-slider");
+      const time = document.getElementById("projection-time");
+      const playButton = document.getElementById("projection-play");
+      const grid = document.getElementById("projection-grid");
+      if (slider) slider.value = String(frame);
+      const timeStart = Number(payload.time_start || 0);
+      const timeEnd = Number(payload.time_end || 0);
+      const stepSeconds = Number(payload.frame_step_seconds || 0);
+      const currentTime = Array.isArray(payload.planes) && payload.planes[0]?.frames?.[frame]
+        ? Number(payload.planes[0].frames[frame].t)
+        : timeStart + stepSeconds * frame;
+      if (time) {
+        time.textContent = `第 ${frame + 1} 帧 / ${payload.frame_count} · ${fmt(currentTime, 2)} s`;
+      }
+      if (playButton) {
+        playButton.textContent = projectionState.timer ? "暂停" : "播放";
+      }
+      if (!grid) return;
+      grid.innerHTML = (payload.planes || []).map((plane) => `
+        <article class="projection-card">
+          <div class="projection-card-head">
+            <div class="projection-card-title">${escapeHtml(displayText(plane.title, "-"))}</div>
+            <div class="projection-card-meta">${escapeHtml(displayText(plane.x_label, "-"))} × ${escapeHtml(displayText(plane.y_label, "-"))}</div>
+          </div>
+          ${renderProjectionSvg(plane, frame)}
+          <div class="projection-legend">
+            <span style="color:${COLORS.truth}"><i></i>真实骨架</span>
+            <span style="color:${COLORS.prediction}"><i></i>预测骨架</span>
+          </div>
+          <div class="projection-copy">同一个播放头会同时推动三张图，方便看骨架姿态、连线长度和预测偏差。</div>
+        </article>
+      `).join("");
+      renderJointSeriesFrame();
+    }
+
+    function toggleProjectionPlayback() {
+      const payload = projectionState.payload;
+      if (!payload?.available) return;
+      if (projectionState.timer) {
+        stopProjectionPlayback();
+        renderProjectionFrame();
+        return;
+      }
+      startProjectionPlayback();
+      renderProjectionFrame();
+    }
+
+    function renderProjection(preview) {
+      const shell = document.getElementById("projection-shell");
+      const note = document.getElementById("projection-note");
+      stopProjectionPlayback();
       if (!preview?.available) {
-        splitSelect.innerHTML = "";
-        sessionSelect.innerHTML = "";
-        jointWrap.innerHTML = "";
-        note.textContent = preview?.reason || "预览数据不可用";
-        return;
+      projectionState.payload = null;
+      projectionState.frame = 0;
+      projectionState.marker = null;
+      note.textContent = displayText(preview?.reason, "当前还没有可播放的 xyz 坐标结果。");
+      shell.innerHTML = `<div class="story-empty">${escapeHtml(displayText(preview?.reason, "当前还没有可播放的 xyz 坐标结果。"))}</div>`;
+      return;
       }
 
-      const splitNames = Object.keys(preview.splits || {}).filter((key) => (preview.splits[key]?.sessions || []).length);
-      state.selectedSplit = splitNames.includes(state.selectedSplit) ? state.selectedSplit : (preview.default_split || splitNames[0]);
-      splitSelect.innerHTML = splitNames.map((name) => `<option value="${name}">${name.toUpperCase()}</option>`).join("");
-      splitSelect.value = state.selectedSplit;
-
-      const rows = preview.splits[state.selectedSplit]?.sessions || [];
-      const sessionIds = rows.map((row) => row.session_id);
-      state.selectedSessionId = sessionIds.includes(state.selectedSessionId) ? state.selectedSessionId : sessionIds[0];
-      sessionSelect.innerHTML = rows.map((row) => `<option value="${row.session_id}">${row.session_id}</option>`).join("");
-      sessionSelect.value = state.selectedSessionId || "";
-
-      const joints = preview.target_names || [];
-      const validSelected = state.selectedJoints.filter((name) => joints.includes(name));
-      state.selectedJoints = validSelected.length ? validSelected : [...joints];
-      jointWrap.innerHTML = joints.map((joint) => `
-        <button type="button" class="joint-pill" data-joint="${joint}" data-active="${state.selectedJoints.includes(joint) ? "true" : "false"}">${joint}</button>
-      `).join("");
-
-      note.textContent = `${state.selectedSplit.toUpperCase()} · ${state.selectedSessionId || "-"} · 已选 ${state.selectedJoints.length} 个关节 · 当前目标是第二个 sheet 的关节角`;
-      document.getElementById("dataset-name").textContent = dataset.dataset_name || "-";
-    }
-
-    function renderJointCharts() {
-      const wrap = document.getElementById("joint-chart-grid");
-      const seriesList = currentSeriesList();
-      if (!seriesList.length) {
-        wrap.innerHTML = "<div class='faint'>当前没有可绘制的关节角时间曲线。</div>";
-        return;
-      }
-
-      const range = visibleRange(seriesList[0].time || [], 8);
-      const width = 620;
-      const height = 170;
-      const xPad = 38;
-      const yPad = 18;
-
-      wrap.innerHTML = seriesList.map((series) => {
-        const trueSlice = series.true.slice(range.start, range.end + 1);
-        const predSlice = series.pred.slice(range.start, range.end + 1);
-        const all = trueSlice.concat(predSlice);
-        const min = Math.min(...all);
-        const max = Math.max(...all);
-        const truePath = svgPoints(trueSlice, width, height, xPad, yPad, min, max);
-        const predPath = svgPoints(predSlice, width, height, xPad, yPad, min, max);
-        const span = Math.max(max - min, 1e-6);
-        const toY = (value) => height - yPad - ((value - min) / span) * (height - yPad * 2);
-        const localIndex = clamp(range.current - range.start, 0, Math.max(trueSlice.length - 1, 0));
-        const hoverX = xPad + ((width - xPad * 2) * localIndex) / Math.max(trueSlice.length - 1, 1);
-        const trueHoverY = toY(trueSlice[localIndex]);
-        const predHoverY = toY(predSlice[localIndex]);
-        const trueEndY = clamp(toY(trueSlice[trueSlice.length - 1]), yPad + 10, height - yPad - 10);
-        const predEndY = clamp(toY(predSlice[predSlice.length - 1]), yPad + 10, height - yPad - 10);
-
-        return `
-          <div class="chart-card">
-            <div class="chart-head">
-              <strong>${series.label}</strong>
-              <span>真实值 / 模型预测 · 约 8 秒滚动窗口</span>
+      projectionState.payload = preview;
+      projectionState.frame = Math.max(0, Math.min(projectionState.frame, Number(preview.frame_count || 1) - 1));
+      projectionState.marker = preview?.joint_series?.markers?.[projectionState.marker] ? projectionState.marker : (preview?.joint_series?.default_marker || null);
+      note.textContent = `${displayText(preview.source_model_family, "最新结果")} · ${displayText(preview.session_id, "-")} · ${displayText((preview.markers || []).length, 0)} 个点 / ${displayText((preview.edges || []).length, 0)} 条连线`;
+      shell.innerHTML = `
+        <div class="projection-controls">
+          <div class="projection-head">
+            <div>
+              <div class="projection-title">${escapeHtml(displayText(preview.title, "xyz 平面投影回放"))}</div>
+              <div class="projection-sub">${escapeHtml(displayText(preview.note, "-"))}</div>
             </div>
-            <svg class="chart-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
-              <line x1="${hoverX}" y1="${yPad}" x2="${hoverX}" y2="${height - yPad}" stroke="rgba(20,49,77,0.18)" stroke-width="1.5" stroke-dasharray="4 4"></line>
-              <polyline fill="none" stroke="rgba(63,115,168,0.18)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" points="${truePath}"></polyline>
-              <polyline fill="none" stroke="rgba(221,139,29,0.18)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" points="${predPath}"></polyline>
-              <polyline fill="none" stroke="${TRUE_COLOR}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" points="${truePath}"></polyline>
-              <polyline fill="none" stroke="${PRED_COLOR}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" points="${predPath}"></polyline>
-              <circle cx="${hoverX}" cy="${trueHoverY}" r="4.2" fill="${TRUE_COLOR}"></circle>
-              <circle cx="${hoverX}" cy="${predHoverY}" r="4.2" fill="${PRED_COLOR}"></circle>
-              ${lineLabel({ x: width - xPad, y: trueEndY, text: "真实值", fill: TRUE_COLOR })}
-              ${lineLabel({ x: width - xPad, y: predEndY, text: "模型预测", fill: PRED_COLOR })}
-            </svg>
+            <div class="projection-time" id="projection-time">-</div>
           </div>
-        `;
-      }).join("");
-    }
-
-    function renderCurrentFrameTable() {
-      const body = document.getElementById("joint-current-table");
-      const seriesList = currentSeriesList();
-      if (!seriesList.length) {
-        body.innerHTML = "<tr><td colspan='4' class='faint'>当前没有可显示的关节。</td></tr>";
-        return;
-      }
-      const idx = clamp(state.hoverIndex, 0, Math.max(seriesList[0].time.length - 1, 0));
-      body.innerHTML = seriesList.map((series) => {
-        const trueVal = series.true[idx];
-        const predVal = series.pred[idx];
-        return `
-          <tr>
-            <td><strong>${series.label}</strong></td>
-            <td>${fmt(trueVal, 2)}°</td>
-            <td>${fmt(predVal, 2)}°</td>
-            <td>${fmt(predVal - trueVal, 2)}°</td>
-          </tr>
-        `;
-      }).join("");
-    }
-
-    function renderJointResults(metrics) {
-      const body = document.getElementById("joint-result-table");
-      if (!metrics) {
-        body.innerHTML = "<tr><td colspan='6' class='faint'>等待结果文件。</td></tr>";
-        return;
-      }
-      const valRows = metrics.val_marker_macro || [];
-      const testRows = metrics.test_marker_macro || [];
-      const valMap = Object.fromEntries(valRows.map((row) => [row.marker, row]));
-      const testMap = Object.fromEntries(testRows.map((row) => [row.marker, row]));
-      const order = currentPreview()?.target_names || Object.keys(testMap);
-      body.innerHTML = order.map((joint) => {
-        const val = valMap[joint] || {};
-        const test = testMap[joint] || {};
-        return `
-          <tr>
-            <td><strong>${joint}</strong></td>
-            <td>${fmt(val.pearson_r_zero_lag, 4)}</td>
-            <td>${fmt(test.pearson_r_zero_lag, 4)}</td>
-            <td>${fmt(test.mae, 3)}°</td>
-            <td>${fmt(test.rmse, 3)}°</td>
-            <td>${fmt(test.best_lag_r, 4)}</td>
-          </tr>
-        `;
-      }).join("");
-    }
-
-    function renderManifest(manifest) {
-      document.getElementById("manifest-note").textContent = manifest ? `${manifest.included_sessions} 条纳入本次 run` : "-";
-      const el = document.getElementById("manifest-list");
-      if (!manifest) {
-        el.innerHTML = "<div class='faint'>没有数据清单。</div>";
-        return;
-      }
-      el.innerHTML = (manifest.date_groups || []).map((group) => `
-        <div class="row">
-          <div>
-            <strong>${group.date_label}</strong>
-            <small>总共 ${group.total_sessions} 条</small>
-          </div>
-          <div>
-            <strong>纳入 / 排除</strong>
-            <small>纳入 ${group.included_sessions} · 排除 ${group.excluded_sessions}</small>
-          </div>
-          <div>
-            <strong>split</strong>
-            <small>train ${group.train} · val ${group.val} · test ${group.test}</small>
+          <div class="projection-toolbar">
+            <button id="projection-play" class="projection-button" type="button">播放</button>
+            <select id="projection-speed" class="projection-select" aria-label="播放速度">
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option>
+              <option value="1.5">1.5×</option>
+              <option value="2">2×</option>
+            </select>
+            <input id="projection-slider" class="projection-slider" type="range" min="0" max="${Math.max(0, Number(preview.frame_count || 1) - 1)}" step="1" value="${projectionState.frame}" />
           </div>
         </div>
-      `).join("");
-    }
-
-    function renderChannelQC(qc) {
-      document.getElementById("channel-note").textContent = qc ? `A/B/uncertain：${JSON.stringify(qc.summary?.active_half_counts || {})}` : "-";
-      const el = document.getElementById("channel-list");
-      if (!qc) {
-        el.innerHTML = "<div class='faint'>没有通道质量数据。</div>";
-        return;
-      }
-      el.innerHTML = (qc.sessions || []).slice(0, 12).map((row) => `
-        <div class="row">
-          <div>
-            <strong>${row.session_id}</strong>
-            <small>${row.included_in_run ? row.split : "未纳入本次 run"}</small>
+        <div id="projection-grid" class="projection-grid"></div>
+        <div class="joint-series-shell">
+          <div class="joint-series-head">
+            <div>
+              <div class="joint-series-title">单关节位移-时间</div>
+              <div class="joint-series-sub">同一个播放头会同步推动关节位移曲线，方便对照某一个点在三个方向上的真实值和预测值。</div>
+            </div>
+            <div class="projection-toolbar">
+              <select id="joint-series-marker" class="projection-select" aria-label="选择关节">
+                ${(Array.isArray(preview?.joint_series?.marker_order) ? preview.joint_series.marker_order : []).map((marker) => `
+                  <option value="${escapeHtml(marker)}" ${marker === projectionState.marker ? "selected" : ""}>${escapeHtml(marker)}</option>
+                `).join("")}
+              </select>
+              <div id="joint-series-note" class="projection-time">-</div>
+            </div>
           </div>
-          <div>
-            <strong>有效 / 噪声</strong>
-            <small>${row.candidate_half || "?"} / ${row.noisy_half || "?"}</small>
-          </div>
-          <div>
-            <strong>判定理由</strong>
-            <small>${row.reason || "-"}</small>
-          </div>
+          <div id="joint-series-grid" class="joint-series-grid"></div>
         </div>
-      `).join("");
+      `;
+      document.getElementById("projection-play")?.addEventListener("click", toggleProjectionPlayback);
+      document.getElementById("projection-speed")?.addEventListener("change", (event) => {
+        const nextSpeed = Number(event?.target?.value);
+        if (!Number.isFinite(nextSpeed) || nextSpeed <= 0) return;
+        const wasPlaying = Boolean(projectionState.timer);
+        projectionState.speed = nextSpeed;
+        if (wasPlaying) {
+          stopProjectionPlayback();
+          startProjectionPlayback();
+        }
+        renderProjectionFrame();
+      });
+      document.getElementById("projection-slider")?.addEventListener("input", (event) => {
+        const nextValue = Number(event?.target?.value);
+        if (Number.isFinite(nextValue)) {
+          projectionState.frame = nextValue;
+          renderProjectionFrame();
+        }
+      });
+      document.getElementById("joint-series-marker")?.addEventListener("change", (event) => {
+        const nextMarker = String(event?.target?.value || "").trim();
+        if (!nextMarker) return;
+        projectionState.marker = nextMarker;
+        renderProjectionFrame();
+      });
+      const speedSelect = document.getElementById("projection-speed");
+      if (speedSelect) speedSelect.value = String(projectionState.speed);
+      renderProjectionFrame();
     }
 
-    function renderKinQC(qc) {
-      document.getElementById("kin-note").textContent = qc ? `有掉点 ${qc.summary?.sessions_with_missing || 0} 条` : "-";
-      const el = document.getElementById("kin-list");
-      if (!qc) {
-        el.innerHTML = "<div class='faint'>没有关节质量数据。</div>";
+    function renderStoryHighlights(experiment) {
+      const highlights = experiment?.story_highlights || {};
+      const sections = [highlights?.formal, highlights?.rollback].filter((section) => section && Array.isArray(section.items) && section.items.length);
+      const grid = document.getElementById("story-grid");
+      if (!sections.length) {
+        grid.innerHTML = `<div class="story-empty">最近还没有可显示的正式结果或撤回尝试。</div>`;
         return;
       }
-      el.innerHTML = (qc.sessions || []).slice(0, 12).map((row) => {
-        const top = (row.top_missing_markers || [])[0];
+      grid.innerHTML = sections.map((section) => {
+        const cards = section.items.map((item) => {
+          const tone = item?.decision_tone || "off";
+          const detail = item?.detail || {};
+          const files = Array.isArray(detail.files_touched_preview) ? detail.files_touched_preview : [];
+          const filesCopy = files.length ? files.join(" · ") : "这条记录没有落到代码文件";
+          return `
+            <article class="story-card">
+              <div class="story-head">
+                <div>
+                  <div class="story-title">${escapeHtml(displayText(item.title, item.method_label || "-"))}</div>
+                  <div class="story-meta">${escapeHtml(displayText(item.recorded_at_local, "-"))} · ${escapeHtml(displayText(item.dataset_label, "-"))}</div>
+                </div>
+                <span class="story-badge ${escapeHtml(tone)}">${escapeHtml(displayText(item.decision_label, "-"))}</span>
+              </div>
+              <div class="story-facts">
+                <span class="fact-pill">${escapeHtml(displayText(item.method_label, "-"))}</span>
+                <span class="fact-pill">${escapeHtml(displayText(item.track_label, "-"))}</span>
+                <span class="fact-pill">${escapeHtml(displayText(item.result_label, "-"))}</span>
+              </div>
+              <div class="story-body">
+                <div class="story-line"><strong>改了什么</strong><span>${escapeHtml(displayText(item.what_changed, "-"))}</span></div>
+                <div class="story-line"><strong>结果怎样</strong><span>${escapeHtml(displayText(item.result_label, "-"))}</span></div>
+                <div class="story-line"><strong>结论是什么</strong><span>${escapeHtml(displayText(item.conclusion, "-"))}</span></div>
+              </div>
+              <details>
+                <summary>技术细节</summary>
+                <div class="tech-copy">
+                  <div><strong>run</strong> ${escapeHtml(displayText(item.run_id || detail.run_id, "-"))}</div>
+                  <div><strong>原始改动摘要</strong> ${escapeHtml(displayText(detail.summary || item.changes_summary, "-"))}</div>
+                  <div><strong>改动文件</strong> ${escapeHtml(filesCopy)}${detail.files_touched_hidden_count ? ` · +${detail.files_touched_hidden_count}` : ""}</div>
+                </div>
+              </details>
+            </article>
+          `;
+        }).join("");
         return `
-          <div class="row">
-            <div>
-              <strong>${row.session_id}</strong>
-              <small>${row.status} · ${row.included_in_run ? row.split : "未纳入本次 run"}</small>
+          <section class="story-section">
+            <div class="story-section-head">
+              <div class="story-section-title">${escapeHtml(displayText(section.section_title, "最近实验摘要"))}</div>
+              <div class="story-section-count">${section.items.length} 条</div>
             </div>
-            <div>
-              <strong>缺失</strong>
-              <small>缺失 ${fmt((row.raw_nan_ratio || 0) * 100, 2)}% · 最长 gap ${fmt(row.longest_gap_s, 2)} s</small>
-            </div>
-            <div>
-              <strong>最差 marker</strong>
-              <small>${top ? `${top.marker} · ${fmt((top.missing_ratio || 0) * 100, 2)}%` : "无明显掉点"}</small>
-            </div>
-          </div>
+            <div class="story-stack">${cards}</div>
+          </section>
         `;
       }).join("");
-    }
-
-    function metricBundle(run) {
-      if (!run) return {};
-      if (run.metrics) return run.metrics;
-      const out = {};
-      if (run.smoke_metrics) out.smoke = run.smoke_metrics;
-      if (run.final_metrics) out.formal = run.final_metrics;
-      if (run.val_primary_metric !== undefined) out.val = run.val_primary_metric;
-      if (run.test_primary_metric !== undefined) out.test = run.test_primary_metric;
-      return out;
-    }
-
-    function renderCandidate(autoresearch) {
-      const candidate = autoresearch?.candidate || null;
-      document.getElementById("candidate-run").textContent = candidate?.run_id || "-";
-      document.getElementById("candidate-phase").textContent = candidate?.stage || autoresearch?.stage || "-";
-      document.getElementById("candidate-hypothesis").textContent = candidate?.hypothesis || "-";
-      document.getElementById("candidate-files").textContent = (candidate?.files_touched || []).join(", ") || "-";
-      document.getElementById("candidate-smoke").textContent = fmt(candidate?.smoke_metrics?.val_primary_metric, 4);
-      document.getElementById("candidate-formal").textContent = fmt(candidate?.final_metrics?.formal_val_primary_metric || candidate?.final_metrics?.val_primary_metric, 4);
-    }
-
-    function renderIterations(experiment) {
-      const rows = experiment?.rows || [];
-      const el = document.getElementById("iteration-list");
-      if (!rows.length) {
-        el.innerHTML = "<div class='faint'>还没有迭代记录。</div>";
-        return;
-      }
-      const decisionClass = (value) => {
-        const text = String(value || "").toLowerCase();
-        if (text === "accept" || text === "accepted") return "ok";
-        if (text === "reject" || text === "rejected" || text === "rollback") return "warn";
-        return "off";
-      };
-      el.innerHTML = rows.slice().reverse().map((row) => `
-        <div class="iteration-entry">
-          <div class="entry-top">
-            <div>
-              <div class="entry-run">${row.run_id || row.label || "-"}</div>
-              <div class="entry-meta">${row.recorded_at || "-"} · ${row.agent_name || "-"}</div>
-            </div>
-            <span class="entry-badge ${decisionClass(row.decision)}">${row.decision || "-"}</span>
-          </div>
-          <div class="entry-body">
-            <div class="entry-line"><strong>这轮改了什么</strong>${Array.isArray(row.changes_summary) ? row.changes_summary.join(" · ") : (row.changes_summary || "-")}</div>
-            <div class="entry-line"><strong>为什么改</strong>${row.why_this_change || row.hypothesis || "-"}</div>
-            <div class="entry-line"><strong>结果</strong>Smoke Val CC ${fmt(row.smoke_metrics?.val_primary_metric ?? row.metrics?.val_r ?? row.val_primary_metric, 4)} · Formal Val CC ${fmt(row.final_metrics?.formal_val_primary_metric ?? row.final_metrics?.val_primary_metric ?? row.metrics?.formal_val, 4)} · Test CC ${fmt(row.final_metrics?.test_primary_metric ?? row.metrics?.test_r ?? row.test_primary_metric, 4)}</div>
-            <div class="entry-line"><strong>下一步</strong>${row.next_step || "-"}</div>
-          </div>
-        </div>
-      `).join("");
-    }
-
-    function renderArtifacts(items) {
-      const el = document.getElementById("artifact-list");
-      el.innerHTML = (items || []).slice(0, 12).map((item) => `
-        <div class="row">
-          <div>
-            <strong>${item.name}</strong>
-            <small>${item.path}</small>
-          </div>
-          <div>
-            <strong>大小</strong>
-            <small>${fmtInt(item.size_bytes)} bytes</small>
-          </div>
-          <div>
-            <strong>更新时间</strong>
-            <small>${item.modified_at || "-"}</small>
-          </div>
-        </div>
-      `).join("");
     }
 
     function updateStatus(data) {
-      state.latest = data;
-      const metrics = data.latest_metrics;
-      const dataset = data.dataset || {};
-      const autoresearch = data.autoresearch || {};
-      const frozenBaseline = autoresearch?.frozen_baseline || {};
-      const acceptedBest = autoresearch?.accepted_stable_best || autoresearch?.accepted_best || {};
-      const leadingCandidate = autoresearch?.leading_unverified_candidate || {};
-      const acceptedMode = acceptedBest?.evaluation_mode === "cross_session_mainline"
-        ? "cross_session"
-        : acceptedBest?.evaluation_mode === "upper_bound_same_session"
-          ? "upper_bound"
-          : (acceptedBest?.evaluation_mode || "-");
-      const acceptedDetail = [
-        acceptedBest?.feature_family || "-",
-        acceptedBest?.model_family || "-",
-        acceptedMode,
-      ].join(" · ");
+      const headline = data?.dashboard_headline || {};
+      const operator = data?.operator_summary || {};
+      const axisSummary = data?.axis_summary || {};
+      const memoryGuard = data?.memory_guard || {};
+      const progress = data?.progress || {};
+      document.getElementById("hero-dataset").textContent = displayText(operator.dataset_label || headline.dataset, "-");
+      document.getElementById("hero-method").textContent = displayText(operator.method_label || headline.method, "-");
+      document.getElementById("hero-stage").textContent = displayText(operator.stage_label || headline.stage || progress?.stage, "-");
+      document.getElementById("hero-time").textContent = displayText(operator.updated_at_local || headline.time, "-");
+      document.getElementById("hero-duration").textContent = displayText(operator.duration_label || headline.duration, "-");
+      document.getElementById("hero-effect").textContent = displayText(operator.effect_label || headline.current_effect, "本轮还没有正式效果");
+      document.getElementById("hero-formal-note").textContent = displayText(
+        operator.effect_note || headline.recent_formal_summary,
+        "最近还没有正式结果",
+      );
+      document.getElementById("hero-effect-source").textContent = displayText(
+        operator.effect_source_label || headline.current_effect_source,
+        "-",
+      );
 
-      document.getElementById("updated-at").textContent = new Date(data.updated_at).toLocaleString("zh-CN");
-      document.getElementById("status-dot").className = `dot ${data.training?.running ? "ok" : "off"}`;
-      document.getElementById("status-title").textContent = data.training?.running ? "当前有训练进程" : "当前没有训练进程";
-      document.getElementById("status-meta").textContent = data.training?.running
-        ? `已完成 ${data.training?.completed_epochs || 0} 轮`
-        : `当前 campaign：${autoresearch.campaign_id || "-"}`;
-      document.getElementById("frozen-baseline").textContent = `baseline ${frozenBaseline?.run_id || "-"}`;
-      document.getElementById("accepted-best").textContent = `stable best ${acceptedBest?.run_id || "-"}`;
-      document.getElementById("leading-candidate").textContent = `candidate ${leadingCandidate?.run_id || "-"}`;
-      document.getElementById("accepted-best-detail").textContent = acceptedDetail;
-      document.getElementById("accepted-best-top").textContent = acceptedBest?.run_id || "-";
-      document.getElementById("frozen-baseline-top").textContent = frozenBaseline?.run_id || "-";
-      document.getElementById("leading-candidate-top").textContent = leadingCandidate?.run_id || "-";
-      document.getElementById("candidate-stage").textContent = autoresearch?.candidate?.stage ? `candidate ${autoresearch.candidate.stage}` : (autoresearch.stage || "-");
-      document.getElementById("campaign-meta").textContent = autoresearch ? `${autoresearch.campaign_id || "-"} · iteration ${autoresearch.current_iteration ?? "-"} / ${autoresearch.max_iterations ?? "-"}` : "-";
-      document.getElementById("campaign-meta-top").textContent = acceptedDetail;
-
-      document.getElementById("metrics-source").textContent = metrics?.source?.split("/").pop() || "-";
-      document.getElementById("top-chips").innerHTML = [
-        chip(`目标 ${metrics?.target_mode || dataset.target_mode || "-"}`),
-        chip(`空间 ${metrics?.target_space || dataset.target_space || "-"}`),
-        chip(`Baseline ${frozenBaseline?.run_id || "-"}`),
-        chip(`Stable ${acceptedBest?.run_id || "-"}`, "ok"),
-        chip(`Lead ${leadingCandidate?.run_id || "-"}`, leadingCandidate?.run_id ? "warn" : "off"),
-        chip(`Feature ${acceptedBest?.feature_family || "-"}`),
-        chip(`Model ${acceptedBest?.model_family || "-"}`),
-        chip(`Mode ${acceptedMode}`),
-        chip(`Candidate ${autoresearch?.candidate?.stage || "-"}`, autoresearch?.candidate?.stage === "accepted" ? "ok" : "warn"),
-      ].join("");
-
-      document.getElementById("val-r").textContent = fmt(metrics?.val_zero_lag_cc, 4);
-      document.getElementById("test-r").textContent = fmt(metrics?.test_zero_lag_cc, 4);
-      document.getElementById("test-mae").textContent = `${fmt(metrics?.test_mae_deg ?? metrics?.test_mae, 3)}°`;
-      document.getElementById("test-rmse").textContent = `${fmt(metrics?.test_rmse_deg ?? metrics?.test_rmse, 3)}°`;
-
-      document.getElementById("target-mode").textContent = metrics?.target_mode || dataset.target_mode || "-";
-      document.getElementById("target-space").textContent = metrics?.target_space || dataset.target_space || "-";
-      document.getElementById("target-summary").textContent = dataset.target_summary || "-";
-      document.getElementById("target-dim-count").textContent = fmtInt((metrics?.target_names || []).length);
-      document.getElementById("window-spec").textContent = `${dataset.window_seconds || "-"} s / stride ${dataset.stride_samples || "-"}`;
-      document.getElementById("lag-spec").textContent = `${dataset.max_lag_ms || "-"} ms`;
-      document.getElementById("current-strategy").textContent = data.current_strategy || "暂无 current strategy";
-
-      syncControls(data);
-      renderJointCharts();
-      renderCurrentFrameTable();
-      renderJointResults(metrics);
-      renderCandidate(autoresearch);
-      renderManifest(data.manifest);
-      renderChannelQC(data.channel_qc);
-      renderKinQC(data.kinematics_qc);
-      renderIterations(data.experiment);
-      renderArtifacts(data.artifacts);
-      updatePlaybackControls();
-
-      document.getElementById("log-note").textContent = `${(data.training?.log_tail || []).length} 行`;
-      document.getElementById("log-tail").textContent = (data.training?.log_tail || []).join("\n") || "等待日志";
+      renderDirectionGrid(axisSummary);
+      renderJointBreakdown(data?.joint_breakdown || {});
+      renderMemoryGuard(memoryGuard);
+      renderMainlineHistory(data?.mainline_progress || {});
+      renderProjection(data?.prediction_projection || {});
+      renderStoryHighlights(data?.experiment || {});
     }
 
     async function loadStatus() {
@@ -1545,64 +2096,13 @@
       updateStatus(data);
     }
 
-    document.getElementById("preview-split").addEventListener("change", (event) => {
-      state.selectedSplit = event.target.value;
-      state.selectedSessionId = null;
-      state.hoverIndex = 0;
-      updateStatus(state.latest);
+    loadStatus().catch((error) => {
+      console.error(error);
+      document.getElementById("hero-formal-note").textContent = String(error);
     });
-
-    document.getElementById("preview-session").addEventListener("change", (event) => {
-      state.selectedSessionId = event.target.value;
-      state.hoverIndex = 0;
-      redraw();
-    });
-
-    document.getElementById("preview-joints").addEventListener("click", (event) => {
-      const btn = event.target.closest("[data-joint]");
-      if (!btn) return;
-      const joint = btn.dataset.joint;
-      const exists = state.selectedJoints.includes(joint);
-      if (exists && state.selectedJoints.length === 1) return;
-      state.selectedJoints = exists
-        ? state.selectedJoints.filter((name) => name !== joint)
-        : [...state.selectedJoints, joint];
-      state.hoverIndex = 0;
-      updateStatus(state.latest);
-    });
-
-    document.getElementById("play-btn").addEventListener("click", () => {
-      if (state.isPlaying) {
-        stopPlayback();
-        updatePlaybackControls();
-      } else {
-        startPlayback();
-      }
-    });
-
-    document.getElementById("reset-btn").addEventListener("click", () => {
-      stopPlayback();
-      state.hoverIndex = 0;
-      redraw();
-    });
-
-    document.getElementById("progress").addEventListener("input", (event) => {
-      stopPlayback();
-      state.hoverIndex = Number(event.target.value || 0);
-      redraw();
-    });
-
-    document.getElementById("speed").addEventListener("change", (event) => {
-      state.speed = Number(event.target.value || 1);
-      if (state.isPlaying) {
-        startPlayback();
-      } else {
-        updatePlaybackControls();
-      }
-    });
-
-    loadStatus();
-    setInterval(loadStatus, 10000);
+    setInterval(() => {
+      loadStatus().catch((error) => console.error(error));
+    }, 60000);
   </script>
 </body>
 </html>
