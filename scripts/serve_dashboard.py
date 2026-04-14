@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import colorsys
+import hashlib
 import json
 import math
 import mimetypes
+import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -21,7 +25,12 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from bci_autoresearch.control_plane import build_status_snapshot
 from bci_autoresearch.eval.metrics import summarize_per_dim_rows
+
+# Benchmark metrics (lazy import to avoid circular deps)
+_benchmark_metrics_cache: dict[str, Any] | None = None
+_benchmark_metrics_mtime: float = 0.0
 
 DASHBOARD_DIR = ROOT / "dashboard"
 ASSETS_DIR = DASHBOARD_DIR / "assets"
@@ -43,6 +52,7 @@ EXPERIMENT_LEDGER_PATH = MONITOR_DIR / "experiment_ledger.jsonl"
 EXTRA_LEDGER_PATH = ROOT / "tools" / "autoresearch" / "experiment_ledger.jsonl"
 RESEARCH_QUERIES_PATH = MONITOR_DIR / "research_queries.jsonl"
 RESEARCH_EVIDENCE_PATH = MONITOR_DIR / "research_evidence.jsonl"
+JUDGMENT_UPDATES_PATH = MONITOR_DIR / "judgment_updates.jsonl"
 PREDICTION_PREVIEW_PATH = MONITOR_DIR / "current_prediction_preview.json"
 AUTORESEARCH_STATUS_PATH = MONITOR_DIR / "autoresearch_status.json"
 AUTOBCI_REMOTE_RUNTIME_PATH = MONITOR_DIR / "autobci_remote_runtime.json"
@@ -50,30 +60,120 @@ PROCESS_REGISTRY_PATH = MONITOR_DIR / "process_registry.json"
 MISSION_PROCESS_REGISTRY_PATH = MONITOR_DIR / "mission_process_registry.json"
 MEMORY_EVENTS_PATH = MONITOR_DIR / "memory_events.jsonl"
 CURRENT_STRATEGY_PATH = ROOT / "memory" / "current_strategy.md"
+TRACK_MANIFEST_PATH = ROOT / "tools" / "autoresearch" / "tracks.current.json"
+LEGACY_RUNTIME_TRACKS_PATH = MONITOR_DIR / "autobci_runtime_tracks.json"
+CONTROL_PLANE_DIRECTION_TAGS_PATH = ROOT / "configs" / "control_plane_direction_tags.json"
+CONTROL_EVENTS_PATH = MONITOR_DIR / "control_events.jsonl"
 MONET_LILIES_IMAGE = ASSETS_DIR / "monet-water-lilies.jpg"
 
 EPOCH_RE = re.compile(r"epoch=(\d+)\s+train_loss=([0-9.]+)\s+val_loss=([0-9.]+)")
 DATASET_CONFIG_RE = re.compile(r"--dataset-config\s+(\S+)")
+GAIT_TIMING_TRACK_RE = re.compile(r"^gait_phase_eeg_(?P<family>.+)_w(?P<window>\d+p\d+|\d+)_l(?P<lag>\d+)$")
 
 TRACK_LABELS = {
     "canonical_mainline": "主线关节角",
     "relative_origin_xyz": "相对 RSCA 三方向坐标",
     "relative_origin_xyz_upper_bound": "相对 RSCA 同试次上限参考",
+    "gait_phase_label_engineering": "步态标签工程",
+    "gait_phase_eeg_classification": "步态脑电二分类",
+    "gait_phase_bootstrap": "步态标签工程",
+    "wave1_autonomous": "纯脑电新模型",
+    "wave1_phase_state": "步态相位方向",
+    "wave1_representation": "表征探索",
+    "wave1_controls": "混合 / 运动学控制",
+    "wave1_tree_calibration": "树模型校准",
+}
+
+TRACK_ROLE_LABELS = {
+    "primary": "主线候选",
+    "structure": "结构化研究线",
+    "control": "控制线",
+}
+
+DIRECTION_FOCUS_LABELS = {
+    "pure_brain_breakthrough": "优先：纯脑电突破",
+    "structure_probe": "辅助：结构解释",
+    "same_session_reference": "辅助：同试次参考",
+    "baseline_guard": "护栏：主线守线",
+    "control_reference": "护栏：控制对照",
+}
+
+QUEUE_COMPILER_STATUS_LABELS = {
+    "idle": ("待命", "off"),
+    "compiling": ("编译中", "warn"),
+    "planning": ("编译中", "warn"),
+    "validating": ("验证中", "warn"),
+    "applied": ("已写入执行队列", "ok"),
+    "failed": ("编译失败", "warn"),
+}
+
+DATA_ACCESS_STATUS_LABELS = {
+    "idle": ("暂无数据访问记录", "off"),
+    "syncing": ("正在同步本地 cache", "warn"),
+    "local_cache_ready": ("本地 cache 已连接", "ok"),
+    "cache_sync_required": ("本地 cache 缺失，未发车", "warn"),
+    "data_access_blocked": ("外置 cache 不可读，等待同步", "warn"),
+}
+
+PLANNER_STATUS_LABELS = {
+    "idle": "待命",
+    "triggered": "已触发",
+    "planning": "规划中",
+    "suggested": "待应用",
+    "applied": "已应用",
+    "skipped": "已跳过",
+    "failed": "失败",
+}
+
+PLANNER_CONFIDENCE_LABELS = {
+    "low": "低",
+    "medium": "中",
+    "high": "高",
 }
 
 MODEL_FAMILY_LABELS = {
+    "linear_logistic": "Linear Logistic",
+    "hybrid_input": "混合输入",
+    "kinematics_only": "运动学历史",
+    "gait_phase_rule": "步态规则",
     "ridge": "Ridge",
     "xgboost": "XGBoost",
+    "tree_xgboost": "XGBoost",
     "random_forest": "Random Forest",
+    "extra_trees": "Extra Trees",
+    "catboost": "CatBoost",
     "feature_lstm": "Feature LSTM",
+    "feature_gru": "Feature GRU",
+    "feature_tcn": "Feature TCN",
     "lstm": "LSTM",
+    "raw_lstm": "Raw LSTM",
+}
+
+MODEL_FAMILY_FALLBACK_TOKENS = {
+    "cnn": "CNN",
+    "tcn": "TCN",
+    "lstm": "LSTM",
+    "gru": "GRU",
+    "rnn": "RNN",
+    "mlp": "MLP",
+    "svm": "SVM",
+    "knn": "KNN",
+    "dmd": "DMD",
+    "sdm": "SDM",
+    "xgb": "XGB",
 }
 
 MODEL_ROUTE_LABELS = {
+    "linear_logistic": "Linear Logistic 线性分类路线",
+    "hybrid_input": "混合输入路线",
+    "kinematics_only": "运动学历史自回归路线",
+    "gait_phase_rule": "步态标签工程路线",
     "ridge": "Ridge 线性基线路线",
     "xgboost": "XGBoost 决策树路线",
     "random_forest": "Random Forest 树模型路线",
     "feature_lstm": "Feature LSTM 时序特征路线",
+    "feature_gru": "Feature GRU 时序特征路线",
+    "feature_tcn": "Feature TCN 时序特征路线",
     "lstm": "Raw LSTM 时序路线",
 }
 
@@ -110,18 +210,59 @@ CHANGE_BUCKET_LABELS = {
 
 PROGRESS_GROUP_LABELS = {
     "canonical_mainline": "主线关节角",
+    "gait_phase_label_engineering": "步态标签工程",
+    "gait_phase_eeg_classification": "步态脑电二分类",
     "relative_origin_xyz": "相对 RSCA 三方向坐标",
     "relative_origin_xyz_upper_bound": "相对 RSCA 同试次上限参考",
+    "wave1_autonomous": "纯脑电新模型",
+    "wave1_phase_state": "步态相位方向",
+    "wave1_representation": "表征探索",
+    "wave1_controls": "混合 / 运动学控制",
+    "wave1_tree_calibration": "树模型校准",
     "mainline_history": "主线历史锚点",
     "unmapped": "未归类进展",
 }
 
 PROGRESS_GROUP_ORDER = {
     "canonical_mainline": 0,
-    "relative_origin_xyz": 1,
-    "relative_origin_xyz_upper_bound": 2,
-    "mainline_history": 3,
+    "gait_phase_label_engineering": 1,
+    "gait_phase_eeg_classification": 2,
+    "wave1_autonomous": 3,
+    "wave1_phase_state": 4,
+    "wave1_representation": 5,
+    "relative_origin_xyz": 6,
+    "relative_origin_xyz_upper_bound": 7,
+    "wave1_controls": 8,
+    "wave1_tree_calibration": 9,
+    "mainline_history": 10,
     "unmapped": 99,
+}
+
+MODEL_OVERLAY_COLOR_TOKENS = {
+    "hybrid_input": "modelHybrid",
+    "kinematics_only": "modelKinematics",
+    "xgboost": "modelXgboost",
+    "feature_lstm": "modelFeatureLstm",
+    "feature_gru": "modelFeatureLstm",
+    "feature_tcn": "modelFeatureLstm",
+    "lstm": "modelLstm",
+    "ridge": "modelRidge",
+    "random_forest": "modelForest",
+    "extra_trees": "modelForest",
+    "catboost": "modelCatboost",
+}
+
+SERIES_CLASS_LABELS = {
+    "mainline_brain": "主线脑电",
+    "structure": "结构化研究线",
+    "same_session_reference": "同试次参考线",
+    "control": "控制实验（不进入主线晋升）",
+}
+
+SERIES_LINE_STYLES = {
+    "mainline_brain": "solid",
+    "structure": "dashed",
+    "same_session_reference": "dotted",
 }
 
 PLATEAU_STATE_LABELS = {
@@ -135,6 +276,8 @@ FILE_ROUTE_LABELS = {
     "scripts/train_tree_baseline.py": "决策树 / XGBoost 训练入口",
     "scripts/train_ridge.py": "Ridge 线性模型训练入口",
     "scripts/train_feature_lstm.py": "Feature LSTM 训练入口",
+    "scripts/train_feature_gru.py": "Feature GRU 训练入口",
+    "scripts/train_feature_tcn.py": "Feature TCN 训练入口",
     "scripts/train_lstm.py": "Raw LSTM 训练入口",
     "src/bci_autoresearch/models/lstm_regressor.py": "Feature LSTM 的时序编码器",
 }
@@ -178,6 +321,74 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def write_json_atomic(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(f"{path.suffix}.tmp")
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
+    tmp_path.replace(path)
+
+
+def append_jsonl(path: Path, row: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False))
+        handle.write("\n")
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def local_now() -> datetime:
+    return datetime.now()
+
+
+def read_recent_control_events(path: Path, limit: int = 10) -> list[dict[str, Any]]:
+    rows = read_jsonl(path)
+    if limit <= 0:
+        return []
+    return list(reversed(rows[-limit:]))
+
+
+def record_control_event(
+    path: Path,
+    *,
+    action: str,
+    ok: bool,
+    message: str,
+    input_payload: dict[str, Any] | None,
+) -> dict[str, Any]:
+    row = {
+        "recorded_at": utc_now().replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "action": str(action).strip(),
+        "input": input_payload or {},
+        "ok": bool(ok),
+        "message": str(message or "").strip(),
+    }
+    append_jsonl(path, row)
+    return row
+
+
+@lru_cache(maxsize=1)
+def read_system_memory_total_bytes() -> int | None:
+    try:
+        output = subprocess.run(
+            ["sysctl", "-n", "hw.memsize"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    except Exception:
+        return None
+    try:
+        total_bytes = int(output)
+    except (TypeError, ValueError):
+        return None
+    return total_bytes if total_bytes > 0 else None
+
+
 def resolve_dashboard_asset_path(url_path: str) -> Path | None:
     clean = str(url_path or "").strip().lstrip("/")
     if not clean.startswith("assets/"):
@@ -215,7 +426,12 @@ def query_registered_process_snapshots(processes: list[dict[str, Any]]) -> list[
             command = as_text_or_none(snapshot.get("command")) or ""
             lowered_command = command.lower()
             if not snapshot.get("task_kind"):
-                if "train_feature_lstm.py" in lowered_command or "train_lstm.py" in lowered_command:
+                if (
+                    "train_feature_lstm.py" in lowered_command
+                    or "train_feature_gru.py" in lowered_command
+                    or "train_feature_tcn.py" in lowered_command
+                    or "train_lstm.py" in lowered_command
+                ):
                     snapshot["task_kind"] = "formal_train" if ("--final-eval" in lowered_command or "_formal" in lowered_command) else "smoke_train"
                 elif "train_ridge.py" in lowered_command or "train_tree_baseline.py" in lowered_command:
                     snapshot["task_kind"] = "formal_train" if ("--final-eval" in lowered_command or "_formal" in lowered_command) else "smoke_train"
@@ -230,6 +446,10 @@ def query_registered_process_snapshots(processes: list[dict[str, Any]]) -> list[
             if not snapshot.get("model_family"):
                 if "train_feature_lstm.py" in lowered_command:
                     snapshot["model_family"] = "feature_lstm"
+                elif "train_feature_gru.py" in lowered_command:
+                    snapshot["model_family"] = "feature_gru"
+                elif "train_feature_tcn.py" in lowered_command:
+                    snapshot["model_family"] = "feature_tcn"
                 elif "train_lstm.py" in lowered_command:
                     snapshot["model_family"] = "raw_lstm"
                 elif "train_ridge.py" in lowered_command:
@@ -237,7 +457,7 @@ def query_registered_process_snapshots(processes: list[dict[str, Any]]) -> list[
                 elif "train_tree_baseline.py" in lowered_command:
                     snapshot["model_family"] = "tree_xgboost" if "xgboost" in lowered_command else "tree"
             if not snapshot.get("expected_memory_class"):
-                if snapshot.get("model_family") in {"feature_lstm", "raw_lstm"}:
+                if snapshot.get("model_family") in {"feature_lstm", "feature_gru", "feature_tcn", "raw_lstm"}:
                     snapshot["expected_memory_class"] = "high"
                 elif snapshot.get("task_kind") in {"controller", "governor", "test"}:
                     snapshot["expected_memory_class"] = "low"
@@ -326,7 +546,12 @@ def query_registered_process_snapshots(processes: list[dict[str, Any]]) -> list[
         command = as_text_or_none(merged.get("command")) or ""
         lowered_command = command.lower()
         if not merged.get("task_kind"):
-            if "train_feature_lstm.py" in lowered_command or "train_lstm.py" in lowered_command:
+            if (
+                "train_feature_lstm.py" in lowered_command
+                or "train_feature_gru.py" in lowered_command
+                or "train_feature_tcn.py" in lowered_command
+                or "train_lstm.py" in lowered_command
+            ):
                 merged["task_kind"] = "formal_train" if ("--final-eval" in lowered_command or "_formal" in lowered_command) else "smoke_train"
             elif "train_ridge.py" in lowered_command or "train_tree_baseline.py" in lowered_command:
                 merged["task_kind"] = "formal_train" if ("--final-eval" in lowered_command or "_formal" in lowered_command) else "smoke_train"
@@ -341,6 +566,10 @@ def query_registered_process_snapshots(processes: list[dict[str, Any]]) -> list[
         if not merged.get("model_family"):
             if "train_feature_lstm.py" in lowered_command:
                 merged["model_family"] = "feature_lstm"
+            elif "train_feature_gru.py" in lowered_command:
+                merged["model_family"] = "feature_gru"
+            elif "train_feature_tcn.py" in lowered_command:
+                merged["model_family"] = "feature_tcn"
             elif "train_lstm.py" in lowered_command:
                 merged["model_family"] = "raw_lstm"
             elif "train_ridge.py" in lowered_command:
@@ -348,7 +577,7 @@ def query_registered_process_snapshots(processes: list[dict[str, Any]]) -> list[
             elif "train_tree_baseline.py" in lowered_command:
                 merged["model_family"] = "tree_xgboost" if "xgboost" in lowered_command else "tree"
         if not merged.get("expected_memory_class"):
-            if merged.get("model_family") in {"feature_lstm", "raw_lstm"}:
+            if merged.get("model_family") in {"feature_lstm", "feature_gru", "feature_tcn", "raw_lstm"}:
                 merged["expected_memory_class"] = "high"
             elif merged.get("task_kind") in {"controller", "governor", "test"}:
                 merged["expected_memory_class"] = "low"
@@ -362,10 +591,12 @@ def build_memory_guard_summary(
     runtime_state: dict[str, Any] | None,
     process_registry: dict[str, Any] | None,
     memory_events: list[dict[str, Any]],
+    autoresearch_status: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     runtime = runtime_state or {}
     governor = runtime.get("memory_governor") if isinstance(runtime.get("memory_governor"), dict) else {}
     registry = process_registry if isinstance(process_registry, dict) else {}
+    runtime_status = as_text_or_none(runtime.get("runtime_status")) or "unknown"
     if isinstance(registry.get("processes"), list):
         processes = registry.get("processes")
     else:
@@ -374,7 +605,29 @@ def build_memory_guard_summary(
     active_processes = query_registered_process_snapshots(processes)
     alive_processes = [item for item in active_processes if item.get("alive") is not False]
     mission_rss_mb = sum(float(item.get("rss_mb") or 0.0) for item in alive_processes)
-    queued_tasks = runtime.get("queued_tasks") if isinstance(runtime.get("queued_tasks"), list) else []
+    total_memory_bytes = read_system_memory_total_bytes()
+    used_percent = (
+        (mission_rss_mb * 1024.0 * 1024.0 / total_memory_bytes) * 100.0
+        if alive_processes and total_memory_bytes
+        else 0.0
+    )
+    if isinstance(runtime.get("queued_tasks"), list):
+        queued_tasks = runtime.get("queued_tasks")
+    else:
+        queued_tasks = []
+        status = autoresearch_status if isinstance(autoresearch_status, dict) else {}
+        if as_text_or_none(runtime.get("runtime_status")) == "running" and isinstance(status.get("track_states"), list):
+            active_track_id = as_text_or_none(status.get("active_track_id"))
+            for track_state in status.get("track_states", []):
+                if not isinstance(track_state, dict):
+                    continue
+                track_id = as_text_or_none(track_state.get("track_id"))
+                track_stage = as_text_or_none(track_state.get("stage")) or "unknown"
+                if not track_id or track_id == active_track_id:
+                    continue
+                if track_stage in {"accepted", "rejected", "done"}:
+                    continue
+                queued_tasks.append({"track_id": track_id, "stage": track_stage})
     state = as_text_or_none(governor.get("state")) or "unknown"
     label = {
         "healthy": "健康",
@@ -392,6 +645,8 @@ def build_memory_guard_summary(
         }
         for item in memory_events[-10:]
     ]
+    fallback_process_count = int(runtime.get("mission_process_count") or registry.get("mission_process_count") or 0)
+    process_count = len(alive_processes) if alive_processes else (fallback_process_count if runtime_status == "running" else 0)
     return {
         "mission_id": as_text_or_none(runtime.get("mission_id")),
         "current_campaign_id": as_text_or_none(runtime.get("current_campaign_id")),
@@ -399,12 +654,13 @@ def build_memory_guard_summary(
         "label": label,
         "reason": summarize_text(governor.get("reason") or runtime.get("last_error")),
         "last_transition_at": as_text_or_none(governor.get("last_transition_at") or runtime.get("updated_at")),
-        "used_percent": finite_or_none(governor.get("used_percent")),
-        "process_count": len(alive_processes) or int(registry.get("mission_process_count") or 0),
+        "used_percent": round(used_percent, 1),
+        "system_used_percent": finite_or_none(governor.get("used_percent")),
+        "process_count": process_count,
         "mission_rss_mb": round(mission_rss_mb, 1) if alive_processes else 0.0,
         "queued_count": len(queued_tasks),
         "active_processes": sorted(
-            active_processes,
+            alive_processes,
             key=lambda item: (
                 int(item.get("priority") or 99),
                 -(float(item.get("rss_mb") or 0.0)),
@@ -416,7 +672,7 @@ def build_memory_guard_summary(
             "state": state,
             "label": label,
             "summary": (
-                f"{label} · mission RSS {mission_rss_mb:.1f} MB · {len(alive_processes) or int(registry.get('mission_process_count') or 0)} 个已登记进程"
+                f"{label} · mission RSS {mission_rss_mb:.1f} MB · {process_count} 个已登记进程"
             ),
             "detail": (
                 summarize_text(governor.get("reason") or runtime.get("last_error"))
@@ -538,10 +794,11 @@ def get_training_process() -> dict[str, Any]:
     cmd = ["ps", "-o", "pid=,etime=,pcpu=,pmem=,command=", "-ax"]
     output = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout.splitlines()
     candidates: list[dict[str, Any]] = []
+    config_path = str(current_dataset_config_path())
     for line in output:
         if "train_lstm.py" not in line:
             continue
-        if str(CURRENT_CONFIG_PATH) not in line:
+        if config_path not in line:
             continue
         parts = line.strip().split(None, 4)
         if len(parts) < 5:
@@ -563,7 +820,7 @@ def get_training_process() -> dict[str, Any]:
 
 
 def read_dataset_summary() -> dict[str, Any]:
-    with open(CURRENT_CONFIG_PATH, "r", encoding="utf-8") as f:
+    with open(current_dataset_config_path(), "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     return {
         "dataset_name": cfg["dataset_name"],
@@ -635,14 +892,200 @@ def format_local_timestamp(value: Any) -> str:
     return dt.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
+def parse_timestamp(value: Any) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    normalized = raw.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def format_age_label(value: Any, *, now: datetime | None = None) -> str:
+    recorded_at = parse_timestamp(value)
+    if recorded_at is None:
+        return "-"
+    current = now or utc_now()
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    else:
+        current = current.astimezone(timezone.utc)
+    delta_seconds = max(0, int((current - recorded_at).total_seconds()))
+    if delta_seconds < 60:
+        return "刚刚"
+    if delta_seconds < 3600:
+        return f"{max(1, delta_seconds // 60)} 分钟前"
+    if delta_seconds < 86400:
+        return f"{max(1, delta_seconds // 3600)} 小时前"
+    return f"{max(1, delta_seconds // 86400)} 天前"
+
+
+def dedupe_preserving_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        ordered.append(text)
+    return ordered
+
+
+def summarize_budget_usage(
+    payload: dict[str, Any] | None,
+    *,
+    fallback_budget_limit: Any = None,
+    include_search: bool = True,
+) -> dict[str, Any]:
+    summary_payload = payload if isinstance(payload, dict) else {}
+    search_queries = int(summary_payload.get("search_queries") or 0)
+    evidence_count = int(summary_payload.get("evidence_count") or 0)
+    tool_calls = int(summary_payload.get("tool_calls") or 0)
+    budget_limit = summary_payload.get("budget_limit")
+    if budget_limit in (None, "", 0):
+        budget_limit = fallback_budget_limit
+    budget_limit = int(budget_limit or 0)
+
+    parts: list[str] = []
+    if include_search:
+        parts.append(f"搜索 {search_queries} 次")
+        parts.append(f"证据 {evidence_count} 条")
+    if budget_limit > 0:
+        parts.append(f"工具 {tool_calls}/{budget_limit} 次")
+    else:
+        parts.append(f"工具 {tool_calls} 次")
+
+    return {
+        "search_queries": search_queries,
+        "evidence_count": evidence_count,
+        "tool_calls": tool_calls,
+        "budget_limit": budget_limit,
+        "summary": " · ".join(parts) if parts else "-",
+        "state": "warn" if budget_limit > 0 and tool_calls > budget_limit else "healthy",
+    }
+
+
+def build_progress_marker(value: Any, *, now: datetime) -> dict[str, Any]:
+    return {
+        "recorded_at": as_text_or_none(value),
+        "recorded_at_local": format_local_timestamp(value),
+        "age_label": format_age_label(value, now=now),
+    }
+
+
+def materialization_state_label(value: Any) -> str:
+    mapping = {
+        "idea": "想法",
+        "search_only": "只找到想法",
+        "materialized_pending_smoke": "已物化",
+        "materialized_smoke": "已 smoke",
+        "smoke_completed": "已 smoke",
+        "research_only": "仅调研",
+    }
+    key = str(value or "").strip()
+    if not key:
+        return "未立项"
+    return mapping.get(key, key)
+
+
+def humanize_timing_track_family(value: Any) -> str:
+    key = str(value or "").strip().lower()
+    mapping = {
+        "feature_gru": "Feature GRU",
+        "feature_tcn": "Feature TCN",
+    }
+    if not key:
+        return "未标注算法"
+    return mapping.get(key, key.replace("_", " ").title())
+
+
+def format_timing_label(window_seconds: Any, global_lag_ms: Any) -> str | None:
+    try:
+        window_value = float(window_seconds)
+        lag_value = float(global_lag_ms)
+    except (TypeError, ValueError):
+        return None
+    return f"{window_value:.1f}s · {int(lag_value)}ms"
+
+
+def parse_gait_timing_track_id(track_id: Any) -> dict[str, Any] | None:
+    key = str(track_id or "").strip()
+    if not key:
+        return None
+    match = GAIT_TIMING_TRACK_RE.match(key)
+    if not match:
+        return None
+    try:
+        window_seconds = float(match.group("window").replace("p", "."))
+        global_lag_ms = float(match.group("lag"))
+    except ValueError:
+        return None
+    family = match.group("family")
+    return {
+        "family": family,
+        "window_seconds": window_seconds,
+        "global_lag_ms": global_lag_ms,
+        "timing_label": format_timing_label(window_seconds, global_lag_ms),
+    }
+
+
+def extract_timing_metadata(row: dict[str, Any]) -> dict[str, Any]:
+    metric = resolve_metric_source(row)
+    window_seconds = resolve_nested_field(row, ("window_seconds",), ("metrics", "window_seconds"), ("final_metrics", "window_seconds"), ("smoke_metrics", "window_seconds"))
+    global_lag_ms = resolve_nested_field(row, ("global_lag_ms",), ("metrics", "global_lag_ms"), ("final_metrics", "global_lag_ms"), ("smoke_metrics", "global_lag_ms"))
+    parsed = parse_gait_timing_track_id(row.get("track_id"))
+    if window_seconds is None and isinstance(metric, dict):
+        window_seconds = metric.get("window_seconds")
+    if global_lag_ms is None and isinstance(metric, dict):
+        global_lag_ms = metric.get("global_lag_ms")
+    if window_seconds is None and parsed:
+        window_seconds = parsed.get("window_seconds")
+    if global_lag_ms is None and parsed:
+        global_lag_ms = parsed.get("global_lag_ms")
+    return {
+        "window_seconds": normalize_metric_number(window_seconds),
+        "global_lag_ms": normalize_metric_number(global_lag_ms),
+        "timing_label": format_timing_label(window_seconds, global_lag_ms),
+    }
+
+
 def humanize_track(track_id: Any) -> str:
     key = str(track_id or "").strip()
     if not key:
         return "未标注 track"
+    parsed_timing = parse_gait_timing_track_id(key)
+    if parsed_timing:
+        return f"{humanize_timing_track_family(parsed_timing['family'])} · {parsed_timing['timing_label']}"
     topic_id = resolve_topic_id(key)
     if topic_id:
         return TRACK_LABELS.get(topic_id, topic_id.replace("_", " "))
     return TRACK_LABELS.get(key, key.replace("_", " "))
+
+
+def infer_track_role(track_id: Any, model_family: Any = None) -> str | None:
+    key = str(track_id or "").strip()
+    topic_id = resolve_topic_id(key)
+    normalized_model = str(model_family or "").strip().lower()
+    if key == "canonical_mainline_tree_xgboost" or (topic_id == "canonical_mainline" and normalized_model == "xgboost"):
+        return "control"
+    if topic_id in {"relative_origin_xyz", "relative_origin_xyz_upper_bound"}:
+        return "structure"
+    if topic_id == "canonical_mainline":
+        return "primary"
+    return None
+
+
+def humanize_track_role(track_role: Any) -> str:
+    key = str(track_role or "").strip().lower()
+    if not key:
+        return "-"
+    return TRACK_ROLE_LABELS.get(key, key or "-")
 
 
 def resolve_topic_id(value: Any) -> str | None:
@@ -655,6 +1098,219 @@ def resolve_topic_id(value: Any) -> str | None:
         if key.startswith(f"{topic_id}_"):
             return topic_id
     return None
+
+
+@lru_cache(maxsize=1)
+def load_control_plane_direction_specs() -> dict[str, Any]:
+    payload = read_json(CONTROL_PLANE_DIRECTION_TAGS_PATH) or {}
+    raw_directions = payload.get("directions") if isinstance(payload.get("directions"), list) else []
+    directions: list[dict[str, Any]] = []
+    for raw in raw_directions:
+        if not isinstance(raw, dict):
+            continue
+        tag = str(raw.get("tag") or "").strip().upper()
+        if not tag:
+            continue
+        directions.append(
+            {
+                "tag": tag,
+                "label": str(raw.get("label") or tag).strip() or tag,
+                "summary": str(raw.get("summary") or raw.get("label") or tag).strip() or tag,
+                "focus": str(raw.get("focus") or "pure_brain_breakthrough").strip() or "pure_brain_breakthrough",
+                "priority": int(raw.get("priority") or 999),
+                "topic_ids": [str(item).strip() for item in raw.get("topic_ids", []) if str(item).strip()],
+                "track_ids": [str(item).strip() for item in raw.get("track_ids", []) if str(item).strip()],
+                "track_prefixes": [str(item).strip() for item in raw.get("track_prefixes", []) if str(item).strip()],
+                "algorithm_families": [
+                    normalize_model_family_for_overlay(item) or str(item).strip().lower()
+                    for item in raw.get("algorithm_families", [])
+                    if str(item).strip()
+                ],
+            }
+        )
+    directions.sort(key=lambda item: (int(item.get("priority") or 999), str(item.get("tag") or "")))
+    return {
+        "priority_statement": str(payload.get("priority_statement") or "").strip(),
+        "flow_note": str(payload.get("flow_note") or "").strip(),
+        "directions": directions,
+    }
+
+
+@lru_cache(maxsize=1)
+def current_dataset_config_path() -> Path:
+    if is_gait_phase_benchmark_mode():
+        return ROOT / "configs" / "datasets" / "gait_phase_clean64.yaml"
+    return CURRENT_CONFIG_PATH
+
+
+def humanize_direction_focus(focus: Any) -> str:
+    key = str(focus or "").strip().lower()
+    if not key:
+        return "-"
+    return DIRECTION_FOCUS_LABELS.get(key, key.replace("_", " "))
+
+
+def match_control_plane_direction(item: dict[str, Any], spec: dict[str, Any]) -> bool:
+    track_id = as_text_or_none(item.get("track_id")) or ""
+    topic_id = as_text_or_none(item.get("topic_id")) or resolve_topic_id(track_id) or ""
+    algorithm_family = normalize_model_family_for_overlay(
+        item.get("algorithm_family")
+        or item.get("runner_family")
+        or item.get("model_family")
+        or infer_model_family_from_text(track_id)
+    )
+    if track_id and track_id in spec.get("track_ids", []):
+        return True
+    if topic_id and topic_id in spec.get("topic_ids", []):
+        return True
+    if track_id and any(track_id.startswith(prefix) for prefix in spec.get("track_prefixes", [])):
+        return True
+    if algorithm_family and algorithm_family in spec.get("algorithm_families", []):
+        return True
+    return False
+
+
+def resolve_direction_spec(item: dict[str, Any]) -> dict[str, Any] | None:
+    directions = load_control_plane_direction_specs().get("directions", [])
+    matches = [spec for spec in directions if match_control_plane_direction(item, spec)]
+    if not matches:
+        return None
+    matches.sort(key=lambda spec: (int(spec.get("priority") or 999), str(spec.get("tag") or "")))
+    return matches[0]
+
+
+def collect_control_plane_track_snapshots(
+    status: dict[str, Any] | None,
+    remote_runtime: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+
+    def merge_rows(rows: Any) -> None:
+        if not isinstance(rows, list):
+            return
+        for raw in rows:
+            if not isinstance(raw, dict):
+                continue
+            track_id = as_text_or_none(raw.get("track_id"))
+            if not track_id:
+                continue
+            current = merged.setdefault(track_id, {"track_id": track_id})
+            for key, value in raw.items():
+                if value in (None, "", [], {}):
+                    continue
+                current[key] = value
+
+    manifest_payload = read_json(TRACK_MANIFEST_PATH) or {}
+    merge_rows(manifest_payload.get("tracks"))
+    legacy_runtime_tracks = read_json(LEGACY_RUNTIME_TRACKS_PATH) or {}
+    merge_rows(legacy_runtime_tracks.get("tracks"))
+    merge_rows((remote_runtime or {}).get("autonomous_candidate_tracks"))
+    merge_rows((status or {}).get("track_states"))
+
+    plateau_state = (remote_runtime or {}).get("plateau_state")
+    if isinstance(plateau_state, dict):
+        merge_rows(list(plateau_state.values()))
+    return merged
+
+
+def build_control_plane_summary(
+    *,
+    progress_rows: list[dict[str, Any]],
+    status: dict[str, Any] | None,
+    remote_runtime: dict[str, Any] | None,
+) -> dict[str, Any]:
+    config = load_control_plane_direction_specs()
+    track_snapshots = collect_control_plane_track_snapshots(status, remote_runtime)
+    method_summaries = build_method_progress_summaries(progress_rows)
+    summary_by_track = {
+        as_text_or_none(item.get("track_id")): item
+        for item in method_summaries
+        if isinstance(item, dict) and as_text_or_none(item.get("track_id"))
+    }
+    progress_by_track: dict[str, list[dict[str, Any]]] = {}
+    for row in progress_rows:
+        if not isinstance(row, dict) or bool(row.get("is_synthetic_anchor")):
+            continue
+        track_id = as_text_or_none(row.get("track_id"))
+        if not track_id:
+            continue
+        progress_by_track.setdefault(track_id, []).append(row)
+
+    direction_tags: list[dict[str, Any]] = []
+    for spec in config.get("directions", []):
+        matched_track_ids = {
+            track_id
+            for track_id, snapshot in track_snapshots.items()
+            if match_control_plane_direction(snapshot, spec)
+        }
+        matched_track_ids.update(
+            track_id
+            for track_id, summary in summary_by_track.items()
+            if summary and match_control_plane_direction(summary, spec)
+        )
+        matched_track_ids = {track_id for track_id in matched_track_ids if track_id}
+        matched_summaries = [summary_by_track[track_id] for track_id in matched_track_ids if track_id in summary_by_track]
+        matched_summaries.sort(
+            key=lambda item: (
+                finite_or_none(item.get("latest_val_r")) or float("-inf"),
+                item.get("latest_recorded_at") or "",
+            ),
+            reverse=True,
+        )
+        best_summary = matched_summaries[0] if matched_summaries else None
+        matched_snapshot_rows = [track_snapshots.get(track_id, {"track_id": track_id}) for track_id in sorted(matched_track_ids)]
+        attempt_count = sum(len(progress_by_track.get(track_id, [])) for track_id in matched_track_ids)
+        latest_timestamp = (
+            best_summary.get("latest_recorded_at_local")
+            if isinstance(best_summary, dict)
+            else None
+        ) or next(
+            (
+                format_local_timestamp(snapshot.get("updated_at"))
+                for snapshot in matched_snapshot_rows
+                if isinstance(snapshot, dict) and snapshot.get("updated_at")
+            ),
+            "-",
+        )
+        active_track_id = as_text_or_none((status or {}).get("active_track_id"))
+        active = bool(active_track_id and active_track_id in matched_track_ids)
+        if best_summary:
+            status_label = as_text_or_none(best_summary.get("status_label")) or "已尝试"
+        elif any(bool(snapshot.get("validated")) for snapshot in matched_snapshot_rows):
+            status_label = "已落地待跑"
+        elif matched_track_ids:
+            status_label = "已登记"
+        else:
+            status_label = "未落地"
+        direction_tags.append(
+            {
+                "tag": spec.get("tag"),
+                "label": spec.get("label"),
+                "summary": spec.get("summary"),
+                "focus": spec.get("focus"),
+                "focus_label": humanize_direction_focus(spec.get("focus")),
+                "priority": spec.get("priority"),
+                "status_label": status_label,
+                "active": active,
+                "track_count": len(matched_track_ids),
+                "attempt_count": attempt_count,
+                "track_ids": sorted(matched_track_ids),
+                "best_method_display_label": best_summary.get("method_display_label") if best_summary else None,
+                "best_val_r": best_summary.get("latest_val_r") if best_summary else None,
+                "best_val_r_label": best_summary.get("latest_val_r_label") if best_summary else "-",
+                "best_test_r": best_summary.get("latest_test_r") if best_summary else None,
+                "best_test_r_label": best_summary.get("latest_test_r_label") if best_summary else "-",
+                "best_val_rmse": best_summary.get("latest_val_rmse") if best_summary else None,
+                "best_val_rmse_label": best_summary.get("latest_val_rmse_label") if best_summary else "-",
+                "latest_recorded_at_local": latest_timestamp,
+            }
+        )
+    direction_tags.sort(key=lambda item: (int(item.get("priority") or 999), str(item.get("tag") or "")))
+    return {
+        "priority_statement": config.get("priority_statement") or "",
+        "flow_note": config.get("flow_note") or "",
+        "direction_tags": direction_tags,
+    }
 
 
 def humanize_decision(decision: Any) -> tuple[str, str]:
@@ -676,15 +1332,314 @@ def humanize_change_bucket(bucket: Any) -> str:
 def humanize_model_family(model_family: Any) -> str:
     key = str(model_family or "").strip()
     if not key:
-        return "未标注模型"
-    return MODEL_FAMILY_LABELS.get(key, key.replace("_", " "))
+        return "当前方法"
+    normalized = normalize_model_family_for_overlay(key)
+    if normalized in MODEL_FAMILY_LABELS:
+        return MODEL_FAMILY_LABELS[normalized]
+    if key in MODEL_FAMILY_LABELS:
+        return MODEL_FAMILY_LABELS[key]
+    parts = re.split(r"[_\-\s]+", key)
+    humanized = [
+        MODEL_FAMILY_FALLBACK_TOKENS.get(part.lower(), part.capitalize())
+        for part in parts
+        if part
+    ]
+    return " ".join(humanized) if humanized else key
+
+
+def normalize_model_family_for_overlay(model_family: Any) -> str | None:
+    key = str(model_family or "").strip().lower()
+    if not key:
+        return None
+    if key in {"linear_logistic", "logistic_regression", "logistic"}:
+        return "linear_logistic"
+    if key in {"gait_phase_rule", "gait-phase-rule", "gait_phase_rule_based", "gait_phase_label_engineering"}:
+        return "gait_phase_rule"
+    if key in {"hybrid_input", "hybrid-input"}:
+        return "hybrid_input"
+    if key in {"kinematics_only", "kinematics-only"}:
+        return "kinematics_only"
+    if key in {"tree_xgboost", "xgboost"}:
+        return "xgboost"
+    if key in {"feature_lstm"}:
+        return "feature_lstm"
+    if key in {"feature_gru"}:
+        return "feature_gru"
+    if key in {"feature_tcn"}:
+        return "feature_tcn"
+    if key in {"raw_lstm", "lstm"}:
+        return "lstm"
+    if key in {"ridge"}:
+        return "ridge"
+    if key in {"random_forest", "extra_trees", "catboost"}:
+        return key
+    return key
 
 
 def humanize_model_route(model_family: Any) -> str:
     key = str(model_family or "").strip()
     if not key:
-        return "未标注模型路线"
+        return "当前方法路线"
+    normalized = normalize_model_family_for_overlay(key)
+    if normalized in MODEL_ROUTE_LABELS:
+        return MODEL_ROUTE_LABELS[normalized]
     return MODEL_ROUTE_LABELS.get(key, humanize_model_family(key))
+
+
+def is_gait_phase_eeg_row(row: dict[str, Any]) -> bool:
+    values = [
+        as_text_or_none(row.get("track_id")),
+        as_text_or_none(row.get("topic_id")),
+        as_text_or_none(row.get("run_id")),
+        as_text_or_none(row.get("target_mode")),
+        as_text_or_none(row.get("model_family")),
+        as_text_or_none(row.get("algorithm_family")),
+        as_text_or_none(row.get("runner_family")),
+    ]
+    return any(
+        value and (
+            "gait_phase_eeg" in value.lower()
+            or "gait-phase-eeg" in value.lower()
+            or value.lower() == "gait_phase_eeg_classification"
+        )
+        for value in values
+    )
+
+
+def is_gait_phase_row(row: dict[str, Any]) -> bool:
+    if is_gait_phase_eeg_row(row):
+        return False
+    values = [
+        as_text_or_none(row.get("track_id")),
+        as_text_or_none(row.get("topic_id")),
+        as_text_or_none(row.get("run_id")),
+        as_text_or_none(row.get("target_mode")),
+        as_text_or_none(row.get("model_family")),
+        as_text_or_none(row.get("algorithm_family")),
+        as_text_or_none(row.get("runner_family")),
+    ]
+    return any(
+        value and (
+            "gait_phase" in value.lower()
+            or "gait-phase" in value.lower()
+        )
+        for value in values
+    )
+
+
+def humanize_series_class(series_class: Any) -> str:
+    key = str(series_class or "").strip().lower()
+    if not key:
+        return "-"
+    return SERIES_CLASS_LABELS.get(key, key.replace("_", " "))
+
+
+COMPARISON_GROUP_LABELS = {
+    "gait_phase_eeg": "步态二分类",
+    "legacy_continuous_mainline": "旧连续预测",
+    "structure_reference": "参考/支线",
+    "same_session_reference": "同试次参考线",
+}
+
+
+def infer_comparison_group(row: dict[str, Any], *, series_class: str | None = None) -> str:
+    resolved_series_class = str(series_class or infer_series_class(row)).strip().lower()
+    if is_gait_phase_eeg_row(row):
+        return "gait_phase_eeg"
+    if resolved_series_class == "same_session_reference":
+        return "same_session_reference"
+    if resolved_series_class == "structure":
+        return "structure_reference"
+    return "legacy_continuous_mainline"
+
+
+def humanize_comparison_group(group: Any) -> str:
+    key = str(group or "").strip().lower()
+    if not key:
+        return "-"
+    return COMPARISON_GROUP_LABELS.get(key, key.replace("_", " "))
+
+
+def infer_visual_role(row: dict[str, Any], *, comparison_group: str | None = None) -> str:
+    resolved_group = str(comparison_group or infer_comparison_group(row)).strip().lower()
+    if resolved_group == "gait_phase_eeg":
+        return "focus_point"
+    if resolved_group == "legacy_continuous_mainline":
+        return "legacy_line"
+    return "reference_line"
+
+
+def line_style_for_series_class(series_class: Any) -> str:
+    key = str(series_class or "").strip().lower()
+    return SERIES_LINE_STYLES.get(key, "solid")
+
+
+def _rgba_string(red: int, green: int, blue: int, alpha: float) -> str:
+    return f"rgba({red}, {green}, {blue}, {alpha:.2f})"
+
+
+def build_dynamic_overlay_palette(seed: Any) -> dict[str, Any]:
+    normalized = str(seed or "").strip().lower() or "model-other"
+    digest = hashlib.sha1(normalized.encode("utf-8")).digest()
+    hue = int.from_bytes(digest[:2], "big") / 65535.0
+    saturation = 0.46 + (digest[2] / 255.0) * 0.16
+    lightness = 0.38 + (digest[3] / 255.0) * 0.12
+    red, green, blue = colorsys.hls_to_rgb(hue, lightness, saturation)
+    rgb = tuple(int(round(channel * 255)) for channel in (red, green, blue))
+    return {
+        "color_token": None,
+        "color_hex": "#{:02x}{:02x}{:02x}".format(*rgb),
+        "fill_rgba": _rgba_string(*rgb, 0.22),
+    }
+
+
+def build_overlay_palette_payload(model_family: Any) -> dict[str, Any]:
+    family = normalize_model_family_for_overlay(model_family)
+    token = MODEL_OVERLAY_COLOR_TOKENS.get(family or "")
+    if token:
+        return {
+            "color_token": token,
+            "color_hex": None,
+            "fill_rgba": None,
+        }
+    return build_dynamic_overlay_palette(humanize_model_family(family or model_family))
+
+
+def infer_series_class(row: dict[str, Any]) -> str:
+    track_id = as_text_or_none(row.get("track_id")) or ""
+    topic_id = resolve_topic_id(row.get("topic_id")) or resolve_topic_id(track_id)
+    normalized_track = track_id.lower()
+    if topic_id == "gait_phase_eeg_classification" or is_gait_phase_eeg_row(row):
+        return "mainline_brain"
+    if topic_id == "gait_phase_label_engineering" or is_gait_phase_row(row):
+        return "structure"
+    if normalized_track in {"kinematics_only_baseline", "hybrid_brain_plus_kinematics"}:
+        return "control"
+    if normalized_track.startswith("tree_calibration"):
+        return "control"
+    if topic_id == "relative_origin_xyz_upper_bound" or "upper_bound" in normalized_track:
+        return "same_session_reference"
+    if topic_id == "relative_origin_xyz":
+        return "structure"
+    return "mainline_brain"
+
+
+def infer_input_mode_label(row: dict[str, Any], *, series_class: str | None = None) -> str:
+    series_key = str(series_class or infer_series_class(row)).strip().lower()
+    track_id = (as_text_or_none(row.get("track_id")) or "").lower()
+    topic_id = resolve_topic_id(row.get("topic_id")) or resolve_topic_id(track_id)
+    if topic_id == "gait_phase_eeg_classification" or is_gait_phase_eeg_row(row):
+        return "只用脑电"
+    if topic_id == "gait_phase_label_engineering" or is_gait_phase_row(row):
+        return "只用运动学标记"
+    if track_id == "kinematics_only_baseline":
+        return "只用运动学历史，不用脑电"
+    if track_id == "hybrid_brain_plus_kinematics":
+        return "脑电 + 运动学历史"
+    if track_id.startswith("tree_calibration"):
+        return "脑电 + 运动学历史"
+    if series_key == "same_session_reference":
+        return "只用脑电（同试次参考）"
+    return "只用脑电"
+
+
+def infer_method_variant_label(row: dict[str, Any], *, series_class: str | None = None) -> str:
+    track_id = as_text_or_none(row.get("track_id")) or ""
+    normalized_track = track_id.lower()
+    topic_id = resolve_topic_id(row.get("topic_id")) or resolve_topic_id(track_id)
+    series_key = str(series_class or infer_series_class(row)).strip().lower()
+    if topic_id == "gait_phase_eeg_classification" or is_gait_phase_eeg_row(row):
+        return "步态二分类"
+    if topic_id == "gait_phase_label_engineering" or is_gait_phase_row(row):
+        return "步态标签工程"
+    if normalized_track.startswith("phase_conditioned"):
+        return "phase 条件版"
+    if normalized_track.startswith("phase_aware"):
+        return "phase-aware 特征"
+    if normalized_track.startswith("dmd_sdm"):
+        return "DMD/sDM 特征"
+    if normalized_track == "kinematics_only_baseline":
+        return "只用运动学历史，不用脑电"
+    if normalized_track == "hybrid_brain_plus_kinematics":
+        return "脑电 + 运动学历史"
+    if normalized_track.startswith("tree_calibration"):
+        return "树模型校准（Extra Trees）"
+    if series_key == "same_session_reference" or topic_id == "relative_origin_xyz_upper_bound":
+        return "相对 RSCA 同试次参考"
+    if series_key == "structure" or topic_id == "relative_origin_xyz":
+        return "相对 RSCA 三方向坐标"
+    if normalized_track.startswith("canonical_mainline"):
+        return "标准主线"
+    if normalized_track.endswith("_mainline"):
+        return "标准主线"
+    label = humanize_track(track_id)
+    return label if label != "未标注 track" else "标准主线"
+
+
+def is_promotable_series(series_class: str) -> bool:
+    return str(series_class or "").strip().lower() == "mainline_brain"
+
+
+def build_chart_point_payload(
+    row: dict[str, Any],
+    *,
+    value: float,
+    digits: int,
+    axis: dict[str, Any],
+    is_running_best: bool | None = None,
+) -> dict[str, Any]:
+    metric = resolve_metric_source(row)
+    model_family = normalize_model_family_for_overlay(infer_model_family_from_row(row))
+    series_class = infer_series_class(row)
+    comparison_group = infer_comparison_group(row, series_class=series_class)
+    val_r = normalize_metric_number(metric.get("val_zero_lag_cc"), row.get("val_zero_lag_cc"))
+    test_r = normalize_metric_number(metric.get("test_zero_lag_cc"), row.get("test_zero_lag_cc"))
+    val_rmse = normalize_metric_number(metric.get("val_rmse"), row.get("val_rmse"))
+    timing = extract_timing_metadata(row)
+    point = {
+        "run_id": as_text_or_none(row.get("run_id")),
+        "recorded_at": as_text_or_none(row.get("recorded_at")),
+        "recorded_at_local": format_local_timestamp(row.get("recorded_at")),
+        "value": value,
+        "value_label": format_metric_label(value, digits),
+        "label": summarize_text(row.get("changes_summary")),
+        "track_id": as_text_or_none(row.get("track_id")),
+        "track_label": humanize_track(row.get("track_id")),
+        "decision": as_text_or_none(row.get("decision")),
+        "x_pct": day_bucket_x_pct(as_text_or_none(row.get("recorded_at")), axis),
+        "algorithm_family": model_family,
+        "algorithm_label": humanize_model_family(model_family),
+        "series_class": series_class,
+        "series_class_label": humanize_series_class(series_class),
+        "comparison_group": comparison_group,
+        "comparison_group_label": humanize_comparison_group(comparison_group),
+        "visual_role": infer_visual_role(row, comparison_group=comparison_group),
+        "is_focus_group": comparison_group == "gait_phase_eeg",
+        "method_variant_label": infer_method_variant_label(row, series_class=series_class),
+        "input_mode_label": infer_input_mode_label(row, series_class=series_class),
+        "is_control": series_class == "control",
+        "promotable": is_promotable_series(series_class),
+        "val_r_label": format_metric_label(val_r, 4),
+        "test_r_label": format_metric_label(test_r, 4),
+        "val_rmse_label": format_metric_label(val_rmse, 3),
+        "is_smoke": _is_smoke_point(row),
+        "window_seconds": timing.get("window_seconds"),
+        "global_lag_ms": timing.get("global_lag_ms"),
+        "timing_label": timing.get("timing_label"),
+    }
+    if is_running_best is not None:
+        point["is_running_best"] = is_running_best
+    return point
+
+
+def _is_smoke_point(row: dict[str, Any]) -> bool:
+    track_id_text = (as_text_or_none(row.get("track_id")) or "").lower()
+    decision_text = (as_text_or_none(row.get("decision")) or "").lower()
+    return (
+        "_scout" in track_id_text
+        or "_smoke" in track_id_text
+        or decision_text in ("reject_smoke_failed", "smoke_not_better", "smoke_recorded")
+    )
 
 
 def resolve_metric_source(row: dict[str, Any]) -> dict[str, Any]:
@@ -709,8 +1664,26 @@ def resolve_nested_field(row: dict[str, Any], *paths: tuple[str, ...]) -> Any:
     return None
 
 
+def resolve_progress_metric_value(row: dict[str, Any], metric_name: str) -> float | None:
+    metric = resolve_metric_source(row)
+    if metric_name == "val_primary_metric":
+        return normalize_metric_number(
+            metric.get("val_primary_metric"),
+            metric.get("val_zero_lag_cc"),
+            row.get("val_primary_metric"),
+            row.get("val_zero_lag_cc"),
+        )
+    return normalize_metric_number(metric.get(metric_name), row.get(metric_name))
+
+
 def resolve_model_family(row: dict[str, Any]) -> str | None:
     value = as_text_or_none(row.get("model_family"))
+    if value:
+        return value
+    value = as_text_or_none(row.get("algorithm_family"))
+    if value:
+        return value
+    value = as_text_or_none(row.get("runner_family"))
     if value:
         return value
     value = as_text_or_none(resolve_nested_field(row, ("model", "family")))
@@ -990,11 +1963,7 @@ def summarize_group_metric_series(rows: list[dict[str, Any]]) -> dict[str, list[
     def build_series(metric_name: str, *, digits: int) -> list[dict[str, Any]]:
         series: list[dict[str, Any]] = []
         for row in ordered:
-            metric = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
-            value = normalize_metric_number(
-                metric.get(metric_name),
-                row.get(metric_name),
-            )
+            value = resolve_progress_metric_value(row, metric_name)
             if value is None:
                 continue
             series.append(
@@ -1014,6 +1983,148 @@ def summarize_group_metric_series(rows: list[dict[str, Any]]) -> dict[str, list[
     }
 
 
+def build_health_indicator(
+    points: list[dict[str, Any]],
+    step_points: list[dict[str, Any]],
+    axis: dict[str, Any],
+    higher_is_better: bool,
+    *,
+    recent_window: int = 12,
+) -> dict[str, Any]:
+    """Compute stagnation metrics for the health indicator line."""
+    if not step_points:
+        return {
+            "latest_value": None,
+            "latest_value_label": "-",
+            "delta_24h": None,
+            "delta_24h_label": "-",
+            "days_without_breakthrough": 0,
+            "recent_attempt_count": 0,
+            "recent_breakthrough_count": 0,
+            "stagnation_level": "off",
+            "cost_per_breakthrough": None,
+            "breakthrough_rate": 0.0,
+        }
+
+    latest_value = step_points[-1]["value"]
+    latest_value_label = format_metric_label(latest_value, 4)
+
+    # Delta 24h: find the running-best value 24 hours ago
+    now = utc_now()
+    cutoff_24h = now - timedelta(hours=24)
+    delta_24h = None
+    delta_24h_label = "-"
+    for pt in points:
+        ts = parse_timestamp(pt.get("recorded_at"))
+        if ts is not None and ts <= cutoff_24h and pt.get("is_running_best"):
+            baseline_value = pt["value"]
+            delta_24h = latest_value - baseline_value
+            sign = "+" if delta_24h >= 0 else ""
+            delta_24h_label = f"{sign}{delta_24h:.4f}"
+    # If no point before 24h, check if all running best points are within 24h
+    if delta_24h is None and len(step_points) > 1:
+        first_ts = parse_timestamp(step_points[0].get("recorded_at") if isinstance(step_points[0], dict) else None)
+        if first_ts is not None and first_ts > cutoff_24h:
+            delta_24h = latest_value - step_points[0]["value"]
+            sign = "+" if delta_24h >= 0 else ""
+            delta_24h_label = f"{sign}{delta_24h:.4f}"
+
+    # Days without breakthrough: walk backward through axis days
+    days = axis.get("days", [])
+    breakthrough_dates: set[str] = set()
+    for pt in points:
+        if pt.get("is_running_best"):
+            ts = parse_timestamp(pt.get("recorded_at"))
+            if ts is not None:
+                breakthrough_dates.add(ts.date().isoformat())
+    days_without_breakthrough = 0
+    for day in reversed(days):
+        date_key = day.get("date")
+        if date_key and date_key in breakthrough_dates:
+            break
+        days_without_breakthrough += 1
+
+    # Recent attempts
+    recent_points = points[-recent_window:] if len(points) > recent_window else points
+    recent_attempt_count = len(recent_points)
+    recent_breakthrough_count = sum(1 for pt in recent_points if pt.get("is_running_best"))
+
+    # Stagnation level
+    if days_without_breakthrough <= 1 and recent_breakthrough_count > 0:
+        stagnation_level = "healthy"
+    elif days_without_breakthrough <= 3:
+        stagnation_level = "slowing"
+    else:
+        stagnation_level = "stagnant"
+
+    # Breakthrough efficiency: cost per breakthrough over all data
+    total_with_val = sum(1 for pt in points if pt.get("value") is not None)
+    total_breakthroughs = sum(1 for pt in points if pt.get("is_running_best"))
+    cost_per_breakthrough = (
+        round(total_with_val / total_breakthroughs, 1)
+        if total_breakthroughs > 0 else None
+    )
+    breakthrough_rate = (
+        round(total_breakthroughs / total_with_val, 4)
+        if total_with_val > 0 else 0.0
+    )
+
+    return {
+        "latest_value": latest_value,
+        "latest_value_label": latest_value_label,
+        "delta_24h": delta_24h,
+        "delta_24h_label": delta_24h_label,
+        "days_without_breakthrough": days_without_breakthrough,
+        "recent_attempt_count": recent_attempt_count,
+        "recent_breakthrough_count": recent_breakthrough_count,
+        "stagnation_level": stagnation_level,
+        "cost_per_breakthrough": cost_per_breakthrough,
+        "breakthrough_rate": breakthrough_rate,
+    }
+
+
+def build_day_density(
+    points: list[dict[str, Any]],
+    axis: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Compute per-day experiment density for the time heatmap bar."""
+    days = axis.get("days", [])
+    if not days or not points:
+        return []
+
+    day_lookup: dict[str, dict[str, Any]] = {
+        day["date"]: day for day in days if isinstance(day, dict) and day.get("date")
+    }
+    counts: dict[str, int] = {}
+    breakthroughs: dict[str, int] = {}
+    for pt in points:
+        ts = parse_timestamp(pt.get("recorded_at"))
+        if ts is None:
+            continue
+        date_key = ts.date().isoformat()
+        if date_key not in day_lookup:
+            continue
+        counts[date_key] = counts.get(date_key, 0) + 1
+        if pt.get("is_running_best"):
+            breakthroughs[date_key] = breakthroughs.get(date_key, 0) + 1
+
+    result: list[dict[str, Any]] = []
+    for day in days:
+        date_key = day.get("date")
+        if not date_key:
+            continue
+        start_pct = float(day.get("start_pct", 0))
+        end_pct = float(day.get("end_pct", start_pct))
+        result.append({
+            "day_label": day.get("label", date_key),
+            "start_pct": round(start_pct, 2),
+            "width_pct": round(end_pct - start_pct, 2),
+            "count": counts.get(date_key, 0),
+            "breakthrough_count": breakthroughs.get(date_key, 0),
+        })
+    return result
+
+
 def build_reference_progress_plot(
     rows: list[dict[str, Any]],
     *,
@@ -1021,16 +2132,17 @@ def build_reference_progress_plot(
     digits: int,
     higher_is_better: bool,
     overlay_rows: list[dict[str, Any]] | None = None,
+    model_rows: list[dict[str, Any]] | None = None,
+    axis: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     ordered = sort_progress_rows(rows)
-    axis = build_day_bucket_axis(ordered)
+    axis_payload = axis or build_day_bucket_axis(ordered)
     points: list[dict[str, Any]] = []
     running_best_value: float | None = None
     step_points: list[dict[str, Any]] = []
 
     for row in ordered:
-        metric = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
-        value = normalize_metric_number(metric.get(metric_name), row.get(metric_name))
+        value = resolve_progress_metric_value(row, metric_name)
         if value is None:
             continue
 
@@ -1044,26 +2156,27 @@ def build_reference_progress_plot(
             is_running_best = value < running_best_value
             running_best_value = min(running_best_value, value)
 
-        point = {
-            "attempt_idx": len(points) + 1,
-            "run_id": as_text_or_none(row.get("run_id")),
-            "recorded_at": as_text_or_none(row.get("recorded_at")),
-            "recorded_at_local": format_local_timestamp(row.get("recorded_at")),
-            "value": value,
-            "value_label": format_metric_label(value, digits),
-            "label": summarize_text(row.get("changes_summary")),
-            "track_label": humanize_track(row.get("track_id")),
-            "decision": as_text_or_none(row.get("decision")),
-            "is_running_best": is_running_best,
-            "x_pct": day_bucket_x_pct(as_text_or_none(row.get("recorded_at")), axis),
-        }
+        point = build_chart_point_payload(
+            row,
+            value=value,
+            digits=digits,
+            axis=axis_payload,
+            is_running_best=is_running_best,
+        )
+        point["attempt_idx"] = len(points) + 1
         points.append(point)
         step_points.append(
             {
                 "attempt_idx": point["attempt_idx"],
+                "run_id": point["run_id"],
+                "recorded_at": point["recorded_at"],
+                "recorded_at_local": point["recorded_at_local"],
                 "value": running_best_value,
                 "value_label": format_metric_label(running_best_value, digits),
                 "x_pct": point["x_pct"],
+                "comparison_group": point["comparison_group"],
+                "comparison_group_label": point["comparison_group_label"],
+                "visual_role": point["visual_role"],
             }
         )
 
@@ -1072,65 +2185,672 @@ def build_reference_progress_plot(
         "kept_points": sum(1 for point in points if point["is_running_best"]),
         "discarded_points": sum(1 for point in points if not point["is_running_best"]),
         "higher_is_better": higher_is_better,
-        "axis": axis,
+        "axis": axis_payload,
         "points": points,
         "running_best": step_points,
-        "overlays": build_reference_progress_overlays(
+        "algorithm_series": build_algorithm_progress_series(
+            model_rows or [],
+            metric_name=metric_name,
+            digits=digits,
+            axis=axis_payload,
+        ),
+        "reference_series": build_reference_progress_series(
             overlay_rows or [],
             metric_name=metric_name,
             digits=digits,
-            axis=axis,
+            axis=axis_payload,
         ),
+        "control_summaries": build_control_experiment_summaries(
+            model_rows or [],
+            digits_primary=4,
+            digits_rmse=3,
+            axis=axis_payload,
+        ),
+        "health_indicator": build_health_indicator(
+            points, step_points, axis_payload, higher_is_better,
+        ),
+        "day_density": build_day_density(points, axis_payload),
     }
 
 
-def build_reference_progress_overlays(
+def build_algorithm_progress_series(
     rows: list[dict[str, Any]],
     *,
     metric_name: str,
     digits: int,
     axis: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    grouped: dict[str, list[dict[str, Any]]] = {}
+    grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for row in sort_progress_rows(rows):
+        family = normalize_model_family_for_overlay(infer_model_family_from_row(row))
+        if not family:
+            continue
+        series_class = infer_series_class(row)
+        if series_class != "mainline_brain":
+            continue
+        comparison_group = infer_comparison_group(row, series_class=series_class)
+        grouped.setdefault((comparison_group, family, series_class), []).append(row)
+
+    overlays: list[dict[str, Any]] = []
+    comparison_order = {
+        "gait_phase_eeg": 0,
+        "legacy_continuous_mainline": 1,
+        "structure_reference": 2,
+        "same_session_reference": 3,
+    }
+    ordered_keys = sorted(
+        grouped.keys(),
+        key=lambda item: (comparison_order.get(item[0], 99), humanize_model_family(item[1]), item[2]),
+    )
+    for comparison_group, family, series_class in ordered_keys:
+        points: list[dict[str, Any]] = []
+        for row in grouped[(comparison_group, family, series_class)]:
+            value = resolve_progress_metric_value(row, metric_name)
+            if value is None:
+                continue
+            points.append(build_chart_point_payload(row, value=value, digits=digits, axis=axis))
+        if not points:
+            continue
+        overlays.append(
+            {
+                "model_family": family,
+                "algorithm_family": family,
+                "algorithm_label": humanize_model_family(family),
+                "series_class": series_class,
+                "series_class_label": humanize_series_class(series_class),
+                "comparison_group": comparison_group,
+                "comparison_group_label": humanize_comparison_group(comparison_group),
+                "visual_role": "focus_point" if comparison_group == "gait_phase_eeg" else "legacy_line",
+                "is_focus_group": comparison_group == "gait_phase_eeg",
+                "line_style": line_style_for_series_class(series_class),
+                **build_overlay_palette_payload(family),
+                "points": points,
+            }
+        )
+    return overlays
+
+
+def build_reference_progress_series(
+    rows: list[dict[str, Any]],
+    *,
+    metric_name: str,
+    digits: int,
+    axis: dict[str, Any],
+) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for row in sort_progress_rows(rows):
         group_id = as_text_or_none(row.get("group_id"))
         if not group_id:
             continue
-        grouped.setdefault(group_id, []).append(row)
+        series_class = infer_series_class(row)
+        if series_class not in {"structure", "same_session_reference"}:
+            continue
+        family = normalize_model_family_for_overlay(infer_model_family_from_row(row)) or "other"
+        grouped.setdefault((group_id, family, series_class), []).append(row)
 
     overlays: list[dict[str, Any]] = []
-    ordered_group_ids = sorted(grouped, key=lambda key: PROGRESS_GROUP_ORDER.get(key, 99))
-    for index, group_id in enumerate(ordered_group_ids):
+    ordered_keys = sorted(
+        grouped,
+        key=lambda item: (PROGRESS_GROUP_ORDER.get(item[0], 99), humanize_model_family(item[1])),
+    )
+    for index, (group_id, family, series_class) in enumerate(ordered_keys):
         points: list[dict[str, Any]] = []
-        for row in grouped[group_id]:
-            metric = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
-            value = normalize_metric_number(metric.get(metric_name), row.get(metric_name))
+        for row in grouped[(group_id, family, series_class)]:
+            value = resolve_progress_metric_value(row, metric_name)
             if value is None:
                 continue
-            points.append(
-                {
-                    "run_id": as_text_or_none(row.get("run_id")),
-                    "recorded_at": as_text_or_none(row.get("recorded_at")),
-                    "recorded_at_local": format_local_timestamp(row.get("recorded_at")),
-                    "value": value,
-                    "value_label": format_metric_label(value, digits),
-                    "label": summarize_text(row.get("changes_summary")),
-                    "track_label": humanize_track(row.get("track_id")),
-                    "decision": as_text_or_none(row.get("decision")),
-                    "x_pct": day_bucket_x_pct(as_text_or_none(row.get("recorded_at")), axis),
-                }
-            )
+            points.append(build_chart_point_payload(row, value=value, digits=digits, axis=axis))
         if not points:
             continue
         overlays.append(
             {
                 "group_id": group_id,
-                "label": humanize_progress_group(group_id),
-                "color_token": f"branch{index}",
+                "series_label": humanize_progress_group(group_id),
+                "series_class": series_class,
+                "series_class_label": humanize_series_class(series_class),
+                "comparison_group": infer_comparison_group(grouped[(group_id, family, series_class)][0], series_class=series_class),
+                "comparison_group_label": humanize_comparison_group(
+                    infer_comparison_group(grouped[(group_id, family, series_class)][0], series_class=series_class)
+                ),
+                "visual_role": "reference_line",
+                "is_focus_group": False,
+                "algorithm_family": family,
+                "algorithm_label": humanize_model_family(family),
+                "line_style": line_style_for_series_class(series_class),
+                **build_overlay_palette_payload(family),
                 "points": points,
             }
         )
     return overlays
+
+
+def build_control_experiment_summaries(
+    rows: list[dict[str, Any]],
+    *,
+    digits_primary: int,
+    digits_rmse: int,
+    axis: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    latest_by_track: dict[str, dict[str, Any]] = {}
+    for row in sort_progress_rows(rows):
+        track_id = as_text_or_none(row.get("track_id"))
+        if not track_id:
+            continue
+        if infer_series_class(row) != "control":
+            continue
+        latest_by_track[track_id] = row
+
+    ordered_track_ids = sorted(latest_by_track, key=lambda key: (
+        0 if key == "kinematics_only_baseline" else 1 if key == "hybrid_brain_plus_kinematics" else 2,
+        key,
+    ))
+    summaries: list[dict[str, Any]] = []
+    for track_id in ordered_track_ids:
+        row = latest_by_track[track_id]
+        metric = resolve_metric_source(row)
+        val_r = normalize_metric_number(metric.get("val_zero_lag_cc"), row.get("val_zero_lag_cc"))
+        test_r = normalize_metric_number(metric.get("test_zero_lag_cc"), row.get("test_zero_lag_cc"))
+        val_rmse = normalize_metric_number(metric.get("val_rmse"), row.get("val_rmse"))
+        algorithm_family = normalize_model_family_for_overlay(infer_model_family_from_row(row))
+        if track_id == "hybrid_brain_plus_kinematics" and not algorithm_family:
+            algorithm_label = "混合输入"
+        elif track_id == "kinematics_only_baseline" and not algorithm_family:
+            algorithm_label = "运动学历史"
+        elif track_id == "tree_calibration_catboost_or_extratrees" and not algorithm_family:
+            algorithm_label = "树模型校准"
+        else:
+            algorithm_label = humanize_model_family(algorithm_family)
+        method_variant_label = infer_method_variant_label(row, series_class="control")
+        input_mode_label = infer_input_mode_label(row, series_class="control")
+        if track_id == "tree_calibration_catboost_or_extratrees":
+            label = f"{algorithm_label}（树模型校准，对照）"
+        else:
+            label = f"{algorithm_label}（{input_mode_label}）"
+        summaries.append(
+            {
+                "track_id": track_id,
+                "algorithm_family": algorithm_family,
+                "algorithm_label": algorithm_label,
+                **(build_overlay_palette_payload(algorithm_family) if algorithm_family else {"color_token": None, "color_hex": None, "fill_rgba": None}),
+                "label": label,
+                "input_mode_label": input_mode_label,
+                "method_variant_label": method_variant_label,
+                "recorded_at": as_text_or_none(row.get("recorded_at")),
+                "recorded_at_local": format_local_timestamp(row.get("recorded_at")),
+                "x_pct": day_bucket_x_pct(as_text_or_none(row.get("recorded_at")), axis) if axis is not None else None,
+                "val_r": val_r,
+                "val_r_label": format_metric_label(val_r, digits_primary),
+                "test_r": test_r,
+                "test_r_label": format_metric_label(test_r, digits_primary),
+                "val_rmse": val_rmse,
+                "val_rmse_label": format_metric_label(val_rmse, digits_rmse),
+                "is_control": True,
+                "promotable": False,
+                "decision": as_text_or_none(row.get("decision")),
+                "run_id": as_text_or_none(row.get("run_id")),
+            }
+        )
+    return summaries
+
+
+def humanize_method_progress_status(row: dict[str, Any], *, promotable: bool) -> str:
+    decision = (as_text_or_none(row.get("decision")) or "").strip().lower()
+    if decision == "hold_for_promotion_review":
+        return "进入候选复审"
+    if decision == "hold_for_packet_gate":
+        return "已正式比较" if promotable else "控制实验，不进入主线晋升"
+    if decision == "accepted":
+        return "已正式比较"
+    if decision == "rollback_command_failed":
+        return "回滚/命令失败"
+    if decision == "rollback_broken_candidate":
+        return "回滚/候选跑坏了"
+    if decision == "rollback_scope_violation":
+        return "回滚/越界"
+    if decision == "rollback_irrelevant_change":
+        return "回滚/改动不相关"
+    if decision == "smoke_not_better":
+        return "快速比较没通过"
+    if decision == "codex_failed":
+        return "编辑代理失败"
+    label, _ = humanize_decision(decision)
+    return label
+
+
+def build_method_progress_summaries(
+    rows: list[dict[str, Any]],
+    *,
+    preferred_campaign_id: str | None = None,
+    preferred_track_order: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    def has_meaningful_method_result(row: dict[str, Any]) -> bool:
+        decision = str(row.get("decision") or "").strip().lower()
+        if decision == "baseline_initialized":
+            return False
+        metric = resolve_metric_source(row)
+        return any(
+            value is not None
+            for value in (
+                normalize_metric_number(metric.get("val_zero_lag_cc"), metric.get("val_primary_metric"), row.get("val_zero_lag_cc"), row.get("val_primary_metric")),
+                normalize_metric_number(metric.get("test_zero_lag_cc"), metric.get("test_primary_metric"), row.get("test_zero_lag_cc"), row.get("test_primary_metric")),
+                normalize_metric_number(metric.get("val_rmse"), metric.get("val_rmse_deg"), row.get("val_rmse"), row.get("val_rmse_deg")),
+            )
+        ) or decision in {
+            "rollback_command_failed",
+            "rollback_broken_candidate",
+            "rollback_scope_violation",
+            "rollback",
+            "hold_for_promotion_review",
+            "hold_for_packet_gate",
+            "accepted",
+        }
+
+    source_rows = [
+        row for row in rows
+        if not bool(row.get("is_synthetic_anchor")) and as_text_or_none(row.get("track_id"))
+    ]
+    if preferred_campaign_id:
+        preferred_rows = [
+            row for row in source_rows
+            if as_text_or_none(row.get("campaign_id")) == preferred_campaign_id
+        ]
+        meaningful_preferred = [row for row in preferred_rows if has_meaningful_method_result(row)]
+        if len({as_text_or_none(row.get("track_id")) for row in meaningful_preferred if as_text_or_none(row.get("track_id"))}) >= 3:
+            source_rows = preferred_rows
+
+    ordered_rows = sorted(
+        source_rows,
+        key=lambda row: (
+            as_text_or_none(row.get("recorded_at")) or "",
+            as_text_or_none(row.get("run_id")) or "",
+        ),
+        reverse=True,
+    )
+    latest_by_track: dict[str, dict[str, Any]] = {}
+    for row in ordered_rows:
+        track_id = as_text_or_none(row.get("track_id"))
+        if not track_id or track_id in latest_by_track:
+            continue
+        if not has_meaningful_method_result(row):
+            continue
+        latest_by_track[track_id] = row
+
+    summaries: list[dict[str, Any]] = [build_method_summary_item(row) for _, row in latest_by_track.items()]
+    if preferred_track_order:
+        order_index = {track_id: index for index, track_id in enumerate(preferred_track_order)}
+        summaries.sort(
+            key=lambda item: (
+                order_index.get(item.get("track_id") or "", len(order_index) + 999),
+                -(finite_or_none(item.get("latest_val_r")) or float("-inf")),
+                item.get("latest_recorded_at") or "",
+            )
+        )
+    else:
+        summaries.sort(
+            key=lambda item: (
+                item.get("latest_recorded_at") or "",
+                item.get("track_id") or "",
+            ),
+            reverse=True,
+        )
+    return summaries
+
+
+def build_method_display_label(row: dict[str, Any], *, algorithm_label: str, method_variant_label: str) -> str:
+    timing_label = as_text_or_none(row.get("timing_label"))
+    if not timing_label:
+        timing = extract_timing_metadata(row)
+        timing_label = as_text_or_none(timing.get("timing_label"))
+    if timing_label:
+        return f"{algorithm_label} · {timing_label} · {method_variant_label}"
+    return f"{algorithm_label} · {method_variant_label}"
+
+
+def build_method_short_label(row: dict[str, Any], *, algorithm_label: str, method_variant_label: str) -> str:
+    track_id = (as_text_or_none(row.get("track_id")) or "").lower()
+    if "kinematics_only" in track_id:
+        return "运动学"
+    if "hybrid" in track_id:
+        return "混合"
+    if "tree_calibration" in track_id:
+        return "校准"
+    if "phase_conditioned" in track_id:
+        return "LSTM-Phase"
+    if "phase_aware" in track_id:
+        return "XGB-Phase"
+    if "dmd_sdm" in track_id and "ridge" in track_id:
+        return "Ridge-DMD"
+    if "dmd_sdm" in track_id and "xgboost" in track_id:
+        return "XGB-DMD"
+    if "canonical_mainline" in track_id and algorithm_label == "XGBoost":
+        return "XGB主线"
+    if "canonical_mainline" in track_id and "LSTM" in algorithm_label:
+        return "LSTM主线"
+    return algorithm_label
+
+
+def build_method_source_label(*, series_class: str, promotable: bool) -> str:
+    if str(series_class or "").strip().lower() == "control":
+        return "控制实验，不进入主线晋升"
+    return humanize_series_class(series_class)
+
+
+def build_method_summary_item(row: dict[str, Any]) -> dict[str, Any]:
+    metric = resolve_metric_source(row)
+    series_class = infer_series_class(row)
+    promotable = is_promotable_series(series_class)
+    algorithm_family = normalize_model_family_for_overlay(infer_model_family_from_row(row))
+    algorithm_label = humanize_model_family(algorithm_family)
+    method_variant_label = infer_method_variant_label(row, series_class=series_class)
+    input_mode_label = infer_input_mode_label(row, series_class=series_class)
+    direction_spec = resolve_direction_spec(row)
+    latest_val_r = normalize_metric_number(metric.get("val_zero_lag_cc"), metric.get("val_primary_metric"), row.get("val_zero_lag_cc"), row.get("val_primary_metric"))
+    latest_test_r = normalize_metric_number(metric.get("test_zero_lag_cc"), metric.get("test_primary_metric"), row.get("test_zero_lag_cc"), row.get("test_primary_metric"))
+    latest_val_rmse = normalize_metric_number(metric.get("val_rmse"), metric.get("val_rmse_deg"), row.get("val_rmse"), row.get("val_rmse_deg"))
+    return {
+        "track_id": as_text_or_none(row.get("track_id")),
+        "run_id": as_text_or_none(row.get("run_id")),
+        "campaign_id": as_text_or_none(row.get("campaign_id")),
+        "algorithm_family": algorithm_family,
+        "algorithm_label": algorithm_label,
+        "method_variant_label": method_variant_label,
+        "method_display_label": build_method_display_label(row, algorithm_label=algorithm_label, method_variant_label=method_variant_label),
+        "method_short_label": build_method_short_label(row, algorithm_label=algorithm_label, method_variant_label=method_variant_label),
+        "series_class": series_class,
+        "series_class_label": humanize_series_class(series_class),
+        "source_label": build_method_source_label(series_class=series_class, promotable=promotable),
+        "input_mode_label": input_mode_label,
+        "status_label": humanize_method_progress_status(row, promotable=promotable),
+        "stage_label": humanize_method_progress_status(row, promotable=promotable),
+        "promotable": promotable,
+        "direction_tag": direction_spec.get("tag") if direction_spec else None,
+        "direction_label": direction_spec.get("label") if direction_spec else None,
+        "direction_focus_label": humanize_direction_focus(direction_spec.get("focus")) if direction_spec else None,
+        "latest_val_r": latest_val_r,
+        "latest_val_r_label": format_metric_label(latest_val_r, 4),
+        "latest_test_r": latest_test_r,
+        "latest_test_r_label": format_metric_label(latest_test_r, 4),
+        "latest_val_rmse": latest_val_rmse,
+        "latest_val_rmse_label": format_metric_label(latest_val_rmse, 3),
+        "latest_recorded_at": as_text_or_none(row.get("recorded_at")),
+        "latest_recorded_at_local": format_local_timestamp(row.get("recorded_at")),
+    }
+
+
+def format_target_gap_label(value: float | None, target: float) -> str | None:
+    numeric = finite_or_none(value)
+    if numeric is None:
+        return None
+    gap = target - numeric
+    if abs(gap) < 1e-9:
+        return f"刚好到 {format_metric_label(target, 3)}"
+    if gap > 0:
+        return f"还差 {format_metric_label(gap, 3)}"
+    return f"超出 {format_metric_label(abs(gap), 3)}"
+
+
+def build_algorithm_family_bests(method_summaries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    best_by_family: dict[str, dict[str, Any]] = {}
+    for item in method_summaries:
+        family_key = str(item.get("algorithm_family") or "").strip().lower()
+        if not family_key:
+            continue
+        metric = finite_or_none(item.get("latest_val_r"))
+        if metric is None:
+            continue
+        current = best_by_family.get(family_key)
+        if current is None:
+            best_by_family[family_key] = item
+            continue
+        current_metric = finite_or_none(current.get("latest_val_r"))
+        if current_metric is None:
+            best_by_family[family_key] = item
+            continue
+        if metric > current_metric:
+            best_by_family[family_key] = item
+            continue
+        if metric == current_metric:
+            current_promotable = bool(current.get("promotable"))
+            next_promotable = bool(item.get("promotable"))
+            if next_promotable and not current_promotable:
+                best_by_family[family_key] = item
+                continue
+            if (item.get("latest_recorded_at") or "") >= (current.get("latest_recorded_at") or ""):
+                best_by_family[family_key] = item
+    bests: list[dict[str, Any]] = []
+    for family_key, item in best_by_family.items():
+        bests.append(
+            {
+                "algorithm_family": family_key,
+                "algorithm_label": item.get("algorithm_label"),
+                "best_val_r": item.get("latest_val_r"),
+                "best_val_r_label": item.get("latest_val_r_label"),
+                "best_test_r": item.get("latest_test_r"),
+                "best_test_r_label": item.get("latest_test_r_label"),
+                "best_val_rmse": item.get("latest_val_rmse"),
+                "best_val_rmse_label": item.get("latest_val_rmse_label"),
+                "best_run_id": item.get("run_id"),
+                "best_track_id": item.get("track_id"),
+                "best_method_variant_label": item.get("method_variant_label"),
+                "best_input_mode_label": item.get("input_mode_label"),
+                "best_series_class_label": item.get("series_class_label"),
+                "best_promotable": item.get("promotable"),
+                "is_control_best": not bool(item.get("promotable")),
+                "method_display_label": item.get("method_display_label"),
+                "source_label": item.get("source_label"),
+            }
+        )
+    bests.sort(key=lambda item: (-float(item.get("best_val_r") or float("-inf")), str(item.get("algorithm_label") or "")))
+    return bests
+
+
+def build_moonshot_scoreboard(
+    method_summaries: list[dict[str, Any]],
+    status: dict[str, Any] | None,
+    *,
+    target_val_r: float = 0.6,
+    limit: int = 8,
+) -> dict[str, Any]:
+    current_campaign_id = as_text_or_none((status or {}).get("campaign_id"))
+    pure_brain_rows = [
+        item
+        for item in method_summaries
+        if str(item.get("series_class") or "").strip().lower() == "mainline_brain"
+        and finite_or_none(item.get("latest_val_r")) is not None
+    ]
+
+    def ranking_key(item: dict[str, Any]) -> tuple[Any, ...]:
+        val = finite_or_none(item.get("latest_val_r"))
+        test = finite_or_none(item.get("latest_test_r"))
+        rmse = finite_or_none(item.get("latest_val_rmse"))
+        return (
+            0 if val is not None else 1,
+            -(val if val is not None else float("-inf")),
+            0 if test is not None else 1,
+            -(test if test is not None else float("-inf")),
+            0 if rmse is not None else 1,
+            (rmse if rmse is not None else float("inf")),
+            item.get("latest_recorded_at") or "",
+            item.get("method_display_label") or "",
+            item.get("track_id") or "",
+        )
+
+    ranked_rows = sorted(pure_brain_rows, key=ranking_key)
+
+    def decorate_row(item: dict[str, Any], *, campaign_scope_label: str) -> dict[str, Any]:
+        val = finite_or_none(item.get("latest_val_r"))
+        return {
+            **item,
+            "campaign_scope_label": campaign_scope_label,
+            "scope_label": "同试次纯脑电",
+            "gap_to_target": None if val is None else target_val_r - val,
+            "gap_to_target_label": format_target_gap_label(val, target_val_r),
+        }
+
+    historical_best = decorate_row(ranked_rows[0], campaign_scope_label="历史") if ranked_rows else None
+    tonight_rows = [
+        item for item in ranked_rows
+        if current_campaign_id and as_text_or_none(item.get("campaign_id")) == current_campaign_id
+    ] if current_campaign_id else []
+    tonight_best = decorate_row(tonight_rows[0], campaign_scope_label="今晚") if tonight_rows else None
+
+    rows = []
+    for index, item in enumerate(ranked_rows[:limit], start=1):
+        scope = "今晚" if current_campaign_id and as_text_or_none(item.get("campaign_id")) == current_campaign_id else "历史"
+        rows.append(
+            {
+                **decorate_row(item, campaign_scope_label=scope),
+                "rank": index,
+            }
+        )
+
+    return {
+        "available": bool(rows),
+        "scope_label": "同试次纯脑电",
+        "target_val_r": target_val_r,
+        "target_val_r_label": format_metric_label(target_val_r, 3),
+        "current_campaign_id": current_campaign_id,
+        "historical_best": historical_best,
+        "tonight_best": tonight_best,
+        "historical_gap_label": historical_best and historical_best.get("gap_to_target_label"),
+        "tonight_gap_label": tonight_best and tonight_best.get("gap_to_target_label"),
+        "rows": rows,
+    }
+
+
+def build_upcoming_queue_method_summaries(status: dict[str, Any] | None, *, limit: int = 10) -> list[dict[str, Any]]:
+    payload = status or {}
+    track_states = payload.get("track_states") if isinstance(payload.get("track_states"), list) else []
+    current_queue = [str(item).strip() for item in (payload.get("current_queue") or []) if str(item).strip()]
+    active_track_id = as_text_or_none(payload.get("active_track_id"))
+    state_by_track_id = {
+        as_text_or_none(item.get("track_id")): item
+        for item in track_states
+        if isinstance(item, dict) and as_text_or_none(item.get("track_id"))
+    }
+    ordered_track_ids: list[str] = []
+    seen_track_ids: set[str] = set()
+    for track_id in current_queue:
+        if track_id not in seen_track_ids:
+            ordered_track_ids.append(track_id)
+            seen_track_ids.add(track_id)
+    for item in track_states:
+        if not isinstance(item, dict):
+            continue
+        track_id = as_text_or_none(item.get("track_id"))
+        if not track_id or track_id in seen_track_ids:
+            continue
+        ordered_track_ids.append(track_id)
+        seen_track_ids.add(track_id)
+    if active_track_id and active_track_id in ordered_track_ids:
+        ordered_track_ids.sort(key=lambda track_id: (0 if track_id == active_track_id else 1))
+    summaries: list[dict[str, Any]] = []
+    for track_id in ordered_track_ids:
+        if not track_id:
+            continue
+        state = dict(state_by_track_id.get(track_id) or {})
+        state.setdefault("track_id", track_id)
+        if "gait_phase_eeg_feature_gru" in track_id:
+            state.setdefault("algorithm_family", "feature_gru")
+        elif "gait_phase_eeg_feature_tcn" in track_id:
+            state.setdefault("algorithm_family", "feature_tcn")
+        series_class = str(state.get("series_class") or infer_series_class(state)).strip().lower() or "mainline_brain"
+        promotable = bool(state.get("promotable")) if "promotable" in state else is_promotable_series(series_class)
+        algorithm_family = normalize_model_family_for_overlay(
+            state.get("algorithm_family")
+            or state.get("runner_family")
+            or state.get("model_family")
+            or infer_model_family_from_text(track_id)
+        )
+        algorithm_label = humanize_model_family(algorithm_family)
+        method_variant_label = (
+            as_text_or_none(state.get("method_variant_label"))
+            or ("步态二分类" if "gait_phase_eeg" in track_id else None)
+            or infer_method_variant_label(state, series_class=series_class)
+        )
+        input_mode_label = as_text_or_none(state.get("input_mode_label")) or infer_input_mode_label(state, series_class=series_class)
+        val_r = finite_or_none(state.get("latest_val_primary_metric") or state.get("best_val_primary_metric"))
+        test_r = finite_or_none(state.get("latest_test_primary_metric") or state.get("best_test_primary_metric"))
+        val_rmse = finite_or_none(state.get("latest_val_rmse") or state.get("best_val_rmse"))
+        stage_label = humanize_stage_label(state.get("stage"))
+        summaries.append(
+            {
+                "track_id": track_id,
+                "algorithm_family": algorithm_family,
+                "algorithm_label": algorithm_label,
+                "method_variant_label": method_variant_label,
+                "method_display_label": build_method_display_label(state, algorithm_label=algorithm_label, method_variant_label=method_variant_label),
+                "method_short_label": build_method_short_label(state, algorithm_label=algorithm_label, method_variant_label=method_variant_label),
+                "series_class": series_class,
+                "series_class_label": humanize_series_class(series_class),
+                "source_label": build_method_source_label(series_class=series_class, promotable=promotable),
+                "input_mode_label": input_mode_label,
+                "status_label": stage_label,
+                "promotable": promotable,
+                "latest_val_r": val_r,
+                "latest_val_r_label": format_metric_label(val_r, 4),
+                "latest_test_r": test_r,
+                "latest_test_r_label": format_metric_label(test_r, 4),
+                "latest_val_rmse": val_rmse,
+                "latest_val_rmse_label": format_metric_label(val_rmse, 3),
+                "latest_recorded_at": as_text_or_none(state.get("updated_at")),
+                "latest_recorded_at_local": format_local_timestamp(state.get("updated_at")),
+            }
+        )
+    return summaries[:limit]
+
+
+def build_roadmap_method_summaries(research_tree_text: str | None, status: dict[str, Any] | None, *, limit: int = 10) -> list[dict[str, Any]]:
+    text = str(research_tree_text or "")
+    items: list[tuple[str, str]] = []
+    roadmap_map = {
+        "canonical_mainline_feature_lstm": ("Feature LSTM", "主线候选复验"),
+        "kinematics-only / hybrid": ("对照实验", "运动学 / 脑电 / 混合三线对照"),
+        "tcn smoke": ("TCN", "小规模 smoke"),
+        "时序 cnn smoke": ("时序 CNN", "小规模 smoke"),
+        "kalman": ("Kalman 混合路线", "原型"),
+    }
+    for raw_line in text.splitlines():
+        line = raw_line.strip().lower()
+        if not line or not re.match(r"^\d+\.", line):
+            continue
+        if "canonical_mainline_feature_lstm" in line:
+            items.append(roadmap_map["canonical_mainline_feature_lstm"])
+        elif "kinematics-only" in line or "hybrid" in line:
+            items.append(roadmap_map["kinematics-only / hybrid"])
+        elif "tcn" in line:
+            items.append(roadmap_map["tcn smoke"])
+        elif "时序 cnn" in line or "cnn smoke" in line:
+            items.append(roadmap_map["时序 cnn smoke"])
+        elif "kalman" in line:
+            items.append(roadmap_map["kalman"])
+    summaries: list[dict[str, Any]] = []
+    for algorithm_label, method_variant_label in items[:limit]:
+        summaries.append(
+            {
+                "track_id": None,
+                "algorithm_family": None,
+                "algorithm_label": algorithm_label,
+                "method_variant_label": method_variant_label,
+                "method_display_label": f"{algorithm_label} · {method_variant_label}",
+                "method_short_label": algorithm_label,
+                "series_class": "roadmap",
+                "series_class_label": "研究路线图",
+                "source_label": "研究路线图",
+                "input_mode_label": None,
+                "status_label": "待进入执行队列",
+                "promotable": False,
+                "latest_val_r": None,
+                "latest_val_r_label": "-",
+                "latest_test_r": None,
+                "latest_test_r_label": "-",
+                "latest_val_rmse": None,
+                "latest_val_rmse_label": "-",
+                "latest_recorded_at": None,
+                "latest_recorded_at_local": "-",
+            }
+        )
+    return summaries
 
 
 def build_day_bucket_axis(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1300,7 +3020,7 @@ def build_recent_summary_change_copy(row: dict[str, Any]) -> str:
         return f"{method}：这次重点调了 {'、'.join(parameter_hints)}。"
     if file_label:
         return f"{method}：这次直接改了 {file_label}。"
-    if route != "未标注模型路线":
+    if route != "当前方法路线":
         return f"{method}：这次主要调整了 {route} 的训练方式。"
     return "这次主要改了当前方法线的训练设置。"
 
@@ -1466,6 +3186,10 @@ def infer_progress_group_id(row: dict[str, Any]) -> str:
         return "mainline_history"
     if "canonical_mainline" in run_id:
         return "canonical_mainline"
+    if "gait_phase_eeg" in run_id or "gait-phase-eeg" in run_id:
+        return "gait_phase_eeg_classification"
+    if "gait_phase" in run_id or "gait-phase" in run_id:
+        return "gait_phase_label_engineering"
     if "relative_origin_xyz_upper_bound" in run_id:
         return "relative_origin_xyz_upper_bound"
     if "relative_origin_xyz" in run_id:
@@ -1608,6 +3332,19 @@ def build_plateau_status(status: dict[str, Any] | None) -> dict[str, Any]:
             )
         ),
     }
+
+
+@lru_cache(maxsize=1)
+def is_gait_phase_benchmark_mode() -> bool:
+    manifest = read_json(TRACK_MANIFEST_PATH) or {}
+    tracks = manifest.get("tracks") if isinstance(manifest.get("tracks"), list) else []
+    for track in tracks:
+        if not isinstance(track, dict):
+            continue
+        topic_id = resolve_topic_id(track.get("topic_id")) or resolve_topic_id(track.get("track_id"))
+        if topic_id in {"gait_phase_label_engineering", "gait_phase_eeg_classification"}:
+            return True
+    return False
 
 
 def build_progress_rows(
@@ -2553,10 +4290,78 @@ def build_reference_line(label: str, payload: dict[str, Any] | None) -> dict[str
     }
 
 
-def build_mainline_progress(status: dict[str, Any] | None, progress_rows: list[dict[str, Any]]) -> dict[str, Any]:
+def resolve_primary_progress_group_ids(
+    status: dict[str, Any] | None,
+    progress_rows: list[dict[str, Any]],
+) -> set[str]:
+    observed_groups = {
+        as_text_or_none(row.get("group_id"))
+        for row in progress_rows
+        if as_text_or_none(row.get("group_id"))
+    }
+    observed_non_synthetic_groups = {
+        as_text_or_none(row.get("group_id"))
+        for row in progress_rows
+        if as_text_or_none(row.get("group_id")) and not bool(row.get("is_synthetic_anchor"))
+    }
+
+    payload = status or {}
+    nested_autoresearch = payload.get("autoresearch_status") if isinstance(payload.get("autoresearch_status"), dict) else {}
+    active_track_id = (
+        as_text_or_none(payload.get("active_track_id"))
+        or as_text_or_none(payload.get("current_track_id"))
+        or as_text_or_none(nested_autoresearch.get("active_track_id"))
+    )
+    active_topic_id = resolve_topic_id(active_track_id)
+    if active_topic_id == "gait_phase_eeg_classification":
+        return {"gait_phase_eeg_classification"}
+    if active_topic_id == "gait_phase_label_engineering":
+        return {"gait_phase_label_engineering"}
+
+    track_states = payload.get("track_states")
+    if not isinstance(track_states, list):
+        track_states = nested_autoresearch.get("track_states") if isinstance(nested_autoresearch.get("track_states"), list) else []
+
+    for state in track_states or []:
+        if not isinstance(state, dict):
+            continue
+        topic_id = resolve_topic_id(state.get("topic_id")) or resolve_topic_id(state.get("track_id"))
+        if topic_id == "gait_phase_eeg_classification":
+            return {"gait_phase_eeg_classification"}
+        if topic_id == "gait_phase_label_engineering":
+            return {"gait_phase_label_engineering"}
+
+    if is_gait_phase_benchmark_mode():
+        if "gait_phase_eeg_classification" in observed_non_synthetic_groups or "gait_phase_eeg_classification" in observed_groups:
+            return {"gait_phase_eeg_classification"}
+        if "gait_phase_label_engineering" in observed_non_synthetic_groups or "gait_phase_label_engineering" in observed_groups:
+            return {"gait_phase_label_engineering"}
+
+    if "canonical_mainline" in observed_non_synthetic_groups or "mainline_history" in observed_non_synthetic_groups:
+        return {"canonical_mainline", "mainline_history"}
+
+    if "gait_phase_eeg_classification" in observed_groups:
+        return {"gait_phase_eeg_classification"}
+    if "gait_phase_label_engineering" in observed_groups:
+        return {"gait_phase_label_engineering"}
+
+    return {"canonical_mainline", "mainline_history"}
+
+
+def build_mainline_progress(
+    status: dict[str, Any] | None,
+    progress_rows: list[dict[str, Any]],
+    *,
+    research_tree_text: str | None = None,
+) -> dict[str, Any]:
+    primary_group_ids = resolve_primary_progress_group_ids(status, progress_rows)
+    use_primary_metric_curve = any(
+        group_id in {"gait_phase_eeg_classification", "gait_phase_label_engineering"}
+        for group_id in primary_group_ids
+    )
     mainline_rows = [
         row for row in progress_rows
-        if as_text_or_none(row.get("group_id")) in {"canonical_mainline", "mainline_history"}
+        if as_text_or_none(row.get("group_id")) in primary_group_ids
         and not bool(row.get("is_synthetic_anchor"))
     ]
     branch_rows = [
@@ -2564,9 +4369,19 @@ def build_mainline_progress(status: dict[str, Any] | None, progress_rows: list[d
         if as_text_or_none(row.get("group_id")) in {"relative_origin_xyz", "relative_origin_xyz_upper_bound"}
         and not bool(row.get("is_synthetic_anchor"))
     ]
+    model_rows = [
+        row for row in progress_rows
+        if not bool(row.get("is_synthetic_anchor"))
+    ]
     ordered_rows = sort_progress_rows(mainline_rows)
     latest_row = latest_progress_row(ordered_rows)
-    time_domain = build_progress_time_domain(ordered_rows)
+    axis_source_rows = ordered_rows
+    if not axis_source_rows and branch_rows:
+        axis_source_rows = sort_progress_rows(branch_rows)
+    elif branch_rows:
+        axis_source_rows = sort_progress_rows([*ordered_rows, *branch_rows])
+    time_domain = build_progress_time_domain(axis_source_rows or ordered_rows)
+    shared_axis = build_day_bucket_axis(axis_source_rows or ordered_rows)
     metric_series = summarize_group_metric_series(ordered_rows)
     rmse_available_points = len([row for row in ordered_rows if finite_or_none(((row.get("metrics") or {}) if isinstance(row.get("metrics"), dict) else {}).get("val_rmse")) is not None])
     rmse_missing_points = max(len(ordered_rows) - rmse_available_points, 0)
@@ -2580,6 +4395,18 @@ def build_mainline_progress(status: dict[str, Any] | None, progress_rows: list[d
         "candidate": build_reference_line("current candidate", payload.get("candidate") or {}),
     }
     available = bool(ordered_rows) or any(reference_lines.values())
+    payload = status or {}
+    preferred_track_order = [
+        as_text_or_none(item.get("track_id"))
+        for item in (payload.get("track_states") or [])
+        if isinstance(item, dict) and as_text_or_none(item.get("track_id"))
+    ]
+    method_summaries = build_method_progress_summaries(
+        progress_rows,
+        preferred_campaign_id=as_text_or_none(payload.get("campaign_id")),
+        preferred_track_order=preferred_track_order or None,
+    )
+    family_best_summaries = build_method_progress_summaries(progress_rows)
     return {
         "available": available,
         "title": "主线长期进展",
@@ -2589,6 +4416,12 @@ def build_mainline_progress(status: dict[str, Any] | None, progress_rows: list[d
         "latest_summary": summarize_latest_summary(latest_row) if latest_row else "-",
         "time_domain": time_domain,
         "metric_series": metric_series,
+        "method_summaries": method_summaries,
+        "recent_method_summaries": method_summaries,
+        "algorithm_family_bests": build_algorithm_family_bests(family_best_summaries),
+        "moonshot_scoreboard": build_moonshot_scoreboard(family_best_summaries, payload),
+        "upcoming_queue_method_summaries": build_upcoming_queue_method_summaries(payload),
+        "roadmap_method_summaries": build_roadmap_method_summaries(research_tree_text, payload),
         "rmse_coverage": {
             "available_points": rmse_available_points,
             "missing_points": rmse_missing_points,
@@ -2597,10 +4430,12 @@ def build_mainline_progress(status: dict[str, Any] | None, progress_rows: list[d
         "plots": {
             "primary": build_reference_progress_plot(
                 ordered_rows,
-                metric_name="val_zero_lag_cc",
+                metric_name="val_primary_metric" if use_primary_metric_curve else "val_zero_lag_cc",
                 digits=4,
                 higher_is_better=True,
                 overlay_rows=branch_rows,
+                model_rows=model_rows,
+                axis=shared_axis,
             ),
             "val_rmse": build_reference_progress_plot(
                 ordered_rows,
@@ -2608,6 +4443,8 @@ def build_mainline_progress(status: dict[str, Any] | None, progress_rows: list[d
                 digits=3,
                 higher_is_better=False,
                 overlay_rows=branch_rows,
+                model_rows=model_rows,
+                axis=shared_axis,
             ),
         },
         "reference_lines": reference_lines,
@@ -2677,12 +4514,51 @@ def build_dashboard_headline(
     metrics_payload = metrics or {}
     autoresearch_payload = autoresearch or {}
     current_best = autoresearch_payload.get("accepted_stable_best") or autoresearch_payload.get("accepted_best") or {}
-    current_method = humanize_model_family(current_best.get("model_family") or metrics_payload.get("model_family"))
-    if current_method == "未标注模型":
-        current_method = "暂无可读方法"
+    active_track_id = progress_payload.get("active_track_id") or autoresearch_payload.get("active_track_id")
+    active_track_label = progress_payload.get("active_track_label") or humanize_track(active_track_id)
+    active_model_family = (
+        metrics_payload.get("model_family")
+        or current_best.get("model_family")
+        or infer_model_family_from_text(active_track_id)
+    )
+    active_track_role = progress_payload.get("active_track_role") or infer_track_role(active_track_id, active_model_family)
+    track_role_label = progress_payload.get("active_track_role_label") or humanize_track_role(active_track_role)
+    planner_status_label = as_text_or_none(progress_payload.get("planner_status_label")) or humanize_planner_status(
+        progress_payload.get("planner_status") or autoresearch_payload.get("planner_status")
+    )
+    planner_summary = (
+        as_text_or_none(progress_payload.get("planner_summary"))
+        or as_text_or_none(autoresearch_payload.get("last_planner_summary"))
+        or "当前还没有写入 planner 摘要"
+    )
+    planner_confidence_label = as_text_or_none(progress_payload.get("planner_confidence_label")) or humanize_planner_confidence(
+        progress_payload.get("planner_confidence") or autoresearch_payload.get("last_planner_confidence")
+    )
+    planner_applied_campaign_label = (
+        as_text_or_none(progress_payload.get("planner_applied_campaign_label"))
+        or as_text_or_none(autoresearch_payload.get("last_planner_applied_campaign_id"))
+        or "-"
+    )
+    current_method = " · ".join(
+        part
+        for part in [
+            humanize_model_family(active_model_family) if active_model_family else None,
+            active_track_label if active_track_label != "未标注 track" else None,
+            track_role_label if track_role_label != "-" else None,
+        ]
+        if part
+    ) or "暂无可读方法"
     duration = as_text_or_none(training_payload.get("elapsed")) or "-"
     formal_payload = recent_formal_row or {}
     stop_loss_active = is_manual_stop_loss_state(progress_payload, autoresearch_payload)
+    mode_label, mode_tone = humanize_campaign_mode(progress_payload, autoresearch_payload)
+    track_runtime = build_track_runtime_copy(
+        active_track_id=active_track_id,
+        track_role=active_track_role,
+        has_training_subprocess=str(progress_payload.get("track_runtime_label") or "").strip() == "当前正在运行训练子进程",
+        stage=progress_payload.get("stage") or autoresearch_payload.get("stage"),
+        stop_loss_active=stop_loss_active,
+    )
     if stop_loss_active:
         stage_label = "本轮已止损结束"
         current_effect = "没有新的主线正式提升"
@@ -2713,6 +4589,15 @@ def build_dashboard_headline(
         "current_effect": current_effect,
         "current_effect_source": current_effect_source,
         "recent_formal_summary": recent_formal_summary,
+        "mode_label": mode_label,
+        "mode_tone": mode_tone,
+        "track_role_label": track_role_label,
+        "track_runtime_label": progress_payload.get("track_runtime_label") or track_runtime["track_runtime_label"],
+        "track_status_summary": progress_payload.get("track_status_summary") or track_runtime["track_status_summary"],
+        "planner_status_label": planner_status_label,
+        "planner_summary": planner_summary,
+        "planner_confidence_label": planner_confidence_label,
+        "planner_applied_campaign_label": planner_applied_campaign_label,
         "direction_metrics": summarize_direction_metrics(metrics_payload),
     }
 
@@ -2749,6 +4634,20 @@ def infer_model_family_from_text(value: Any) -> str | None:
     text = str(value or "").strip().lower()
     if not text:
         return None
+    if "gait_phase" in text:
+        return "gait_phase_rule"
+    if "hybrid_brain_plus_kinematics" in text or "hybrid" in text:
+        return "hybrid_input"
+    if "kinematics_only_baseline" in text or "kinematics-only" in text:
+        return "kinematics_only"
+    if "tree_calibration" in text or "extra_trees" in text or "extratrees" in text:
+        return "extra_trees"
+    if "catboost" in text:
+        return "catboost"
+    if "feature_gru" in text or "train_feature_gru.py" in text:
+        return "feature_gru"
+    if "feature_tcn" in text or "train_feature_tcn.py" in text:
+        return "feature_tcn"
     if "feature_lstm" in text:
         return "feature_lstm"
     if re.search(r"(^|[_/\\-])lstm($|[_/\\-])", text) or "train_lstm.py" in text:
@@ -2763,6 +4662,11 @@ def infer_model_family_from_text(value: Any) -> str | None:
 
 
 def infer_model_family_from_row(row: dict[str, Any]) -> str | None:
+    track_id = as_text_or_none(row.get("track_id")) or ""
+    if track_id == "hybrid_brain_plus_kinematics":
+        return "hybrid_input"
+    if track_id == "kinematics_only_baseline":
+        return "kinematics_only"
     return (
         resolve_model_family(row)
         or infer_model_family_from_text(row.get("track_id"))
@@ -2784,6 +4688,72 @@ def humanize_stage_label(value: Any) -> str:
         "pending": "等待结果",
     }
     return mapping.get(key, key or "-")
+
+
+def humanize_campaign_mode(*payloads: dict[str, Any] | None) -> tuple[str, str]:
+    if is_manual_stop_loss_state(*payloads):
+        return ("已止损", "off")
+    campaign_mode = None
+    stage = None
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        campaign_mode = campaign_mode or as_text_or_none(payload.get("campaign_mode"))
+        stage = stage or as_text_or_none(payload.get("stage"))
+    normalized_mode = str(campaign_mode or "").strip().lower()
+    normalized_stage = str(stage or "").strip().lower()
+    if normalized_mode == "exploration":
+        return ("探索中", "ok")
+    if normalized_mode == "closeout":
+        return ("收尾中", "warn")
+    return ("暂无模式", "off")
+
+
+def find_live_training_process(active_processes: Any) -> dict[str, Any]:
+    if not isinstance(active_processes, list):
+        return {}
+    return next(
+        (
+            item
+            for item in active_processes
+            if str(item.get("task_kind") or "") in {"formal_train", "smoke_train", "train"}
+        ),
+        {},
+    )
+
+
+def build_track_runtime_copy(
+    *,
+    active_track_id: Any,
+    track_role: Any,
+    has_training_subprocess: bool,
+    stage: Any,
+    stop_loss_active: bool,
+) -> dict[str, str]:
+    track_label = humanize_track(active_track_id)
+    role_label = humanize_track_role(track_role)
+    role_suffix = f" · {role_label}" if role_label and role_label != "-" else ""
+    normalized_stage = str(stage or "").strip().lower()
+    if has_training_subprocess:
+        summary = f"当前运行轨：{track_label}{role_suffix}" if track_label != "未标注 track" else "当前正在运行训练子进程"
+        return {
+            "track_runtime_label": "当前正在运行训练子进程",
+            "track_status_summary": summary,
+            "last_track_label": summary,
+        }
+    if stop_loss_active or normalized_stage == "done":
+        summary = f"最后活跃轨：{track_label}{role_suffix}" if track_label != "未标注 track" else "当前无运行中轨"
+        return {
+            "track_runtime_label": "当前无运行中轨",
+            "track_status_summary": summary,
+            "last_track_label": summary,
+        }
+    summary = f"当前目标轨：{track_label}{role_suffix}" if track_label != "未标注 track" else "当前没有训练子进程"
+    return {
+        "track_runtime_label": "当前没有训练子进程",
+        "track_status_summary": summary,
+        "last_track_label": summary,
+    }
 
 
 def is_manual_stop_loss_state(*payloads: dict[str, Any] | None) -> bool:
@@ -2815,14 +4785,7 @@ def build_operator_summary(
     guard = memory_guard or {}
     candidate = status.get("candidate") if isinstance(status.get("candidate"), dict) else {}
     active_processes = guard.get("active_processes") if isinstance(guard.get("active_processes"), list) else []
-    live_process = next(
-        (
-            item
-            for item in active_processes
-            if str(item.get("task_kind") or "") in {"formal_train", "smoke_train", "train"}
-        ),
-        {},
-    )
+    live_process = find_live_training_process(active_processes)
     has_training_subprocess = bool(live_process)
     controller_process = active_processes[0] if active_processes else {}
     dataset_label = (
@@ -2832,18 +4795,23 @@ def build_operator_summary(
         or dataset_payload.get("dataset_name")
         or "-"
     )
-    track_label = humanize_track(candidate.get("track_id") or status.get("active_track_id"))
+    active_track_id = candidate.get("track_id") or status.get("active_track_id")
+    track_label = humanize_track(active_track_id)
     model_family = (
         infer_model_family_from_text(live_process.get("model_family"))
         or infer_model_family_from_row(candidate)
-        or infer_model_family_from_text(status.get("active_track_id"))
+        or infer_model_family_from_text(active_track_id)
     )
+    track_role = infer_track_role(active_track_id, model_family)
+    track_role_label = humanize_track_role(track_role)
     method_parts = [
         humanize_model_family(model_family) if model_family else None,
         track_label if track_label != "未标注 track" else None,
+        track_role_label if track_role_label != "-" else None,
     ]
     method_label = " · ".join(part for part in method_parts if part) or "未标注方法"
     stop_loss_active = is_manual_stop_loss_state(status, candidate)
+    mode_label, mode_tone = humanize_campaign_mode(status, candidate)
     stage_label = "本轮已止损结束" if stop_loss_active else humanize_stage_label(candidate.get("stage") or status.get("stage"))
     current_formal_value = first_finite(
         resolve_nested_field(candidate, ("final_metrics", "formal_val_primary_metric")),
@@ -2882,16 +4850,34 @@ def build_operator_summary(
         if has_training_subprocess
         else "当前没有训练子进程"
     )
+    track_runtime = build_track_runtime_copy(
+        active_track_id=active_track_id,
+        track_role=track_role,
+        has_training_subprocess=has_training_subprocess,
+        stage=status.get("stage"),
+        stop_loss_active=stop_loss_active,
+    )
     return {
         "dataset_label": dataset_label,
         "method_label": method_label,
         "track_label": track_label,
+        "track_role_label": track_role_label,
         "stage_label": stage_label,
+        "mode_label": mode_label,
+        "mode_tone": mode_tone,
+        "track_runtime_label": track_runtime["track_runtime_label"],
+        "track_status_summary": track_runtime["track_status_summary"],
+        "last_track_label": track_runtime["last_track_label"],
         "updated_at_local": format_local_timestamp(status.get("updated_at")),
         "duration_label": duration_label,
         "effect_label": effect_label,
         "effect_note": effect_note,
         "effect_source_label": effect_source_label,
+        "planner_status_label": humanize_planner_status(status.get("planner_status")),
+        "planner_trigger_label": as_text_or_none(status.get("last_planner_trigger")) or "-",
+        "planner_summary": as_text_or_none(status.get("last_planner_summary")) or "当前还没有写入 planner 摘要",
+        "planner_confidence_label": humanize_planner_confidence(status.get("last_planner_confidence")),
+        "planner_applied_campaign_label": as_text_or_none(status.get("last_planner_applied_campaign_id")) or "-",
         "glossary": "val = 验证集分数，用来比较候选；test = 留出审计分数，用来确认泛化；rollback = 这轮候选在进入正式比较前被撤回。",
         "has_training_subprocess": has_training_subprocess,
         "run_id": as_text_or_none(candidate.get("run_id")),
@@ -3018,6 +5004,78 @@ def build_axis_summary(
     }
 
 
+def humanize_queue_compiler_status(value: Any) -> tuple[str, str]:
+    key = str(value or "").strip().lower() or "idle"
+    return QUEUE_COMPILER_STATUS_LABELS.get(key, (key or "待命", "off"))
+
+
+def humanize_data_access_status(value: Any) -> tuple[str, str]:
+    key = str(value or "").strip().lower() or "idle"
+    return DATA_ACCESS_STATUS_LABELS.get(key, (key or "暂无数据访问记录", "off"))
+
+
+def build_data_access_summary(runtime_state: dict[str, Any] | None) -> dict[str, Any]:
+    runtime = runtime_state or {}
+    status_key = as_text_or_none(runtime.get("data_access_status")) or "idle"
+    status_label, status_tone = humanize_data_access_status(status_key)
+    reason = as_text_or_none(runtime.get("data_access_reason")) or status_label
+    cache_root = as_text_or_none(runtime.get("data_access_cache_root"))
+    dataset_configs = [
+        str(item).strip()
+        for item in runtime.get("data_access_dataset_configs") or []
+        if str(item).strip()
+    ]
+    summary = reason
+    if cache_root and status_key == "local_cache_ready":
+        summary = f"{status_label} · {cache_root}"
+    return {
+        "status": status_key,
+        "status_label": status_label,
+        "status_tone": status_tone,
+        "summary": summary,
+        "reason": reason,
+        "cache_root": cache_root,
+        "dataset_configs": dataset_configs,
+        "updated_at": as_text_or_none(runtime.get("data_access_checked_at")),
+    }
+
+
+def build_queue_compiler_summary(runtime_state: dict[str, Any] | None) -> dict[str, Any]:
+    runtime = runtime_state or {}
+    status_key = as_text_or_none(runtime.get("queue_compiler_status")) or "idle"
+    status_label, status_tone = humanize_queue_compiler_status(status_key)
+    track_ids = [str(item).strip() for item in runtime.get("last_queue_compiler_track_ids") or [] if str(item).strip()]
+    failed_track_ids = [str(item).strip() for item in runtime.get("last_queue_compiler_failed_track_ids") or [] if str(item).strip()]
+    summary = as_text_or_none(runtime.get("last_queue_compiler_summary")) or "当前还没有新的执行队列编译记录。"
+    reason = as_text_or_none(runtime.get("last_queue_compiler_reason")) or summary
+    if failed_track_ids:
+        summary = f"{summary} 失败方向：{', '.join(failed_track_ids)}。"
+    elif track_ids:
+        summary = f"{summary} 当前编译出的轨：{', '.join(track_ids)}。"
+    return {
+        "status": status_key,
+        "status_label": status_label,
+        "status_tone": status_tone,
+        "summary": summary,
+        "reason": reason,
+        "track_ids": track_ids,
+        "failed_track_ids": failed_track_ids,
+        "updated_at": as_text_or_none(runtime.get("last_queue_compiler_at")),
+    }
+
+
+def humanize_planner_status(value: Any) -> str:
+    key = str(value or "").strip().lower() or "idle"
+    return PLANNER_STATUS_LABELS.get(key, key or "待命")
+
+
+def humanize_planner_confidence(value: Any) -> str:
+    key = str(value or "").strip().lower()
+    if not key:
+        return "-"
+    return PLANNER_CONFIDENCE_LABELS.get(key, key)
+
+
 def format_experiment_result_label(row: dict[str, Any]) -> str:
     formal_val = extract_formal_val_metric(row)
     smoke_val = extract_smoke_val_metric(row)
@@ -3088,6 +5146,7 @@ def build_recent_experiment_summaries(
         if bool(row.get("is_synthetic_anchor")):
             continue
         method_label = humanize_model_family(infer_model_family_from_row(row))
+        role_label = humanize_track_role(infer_track_role(row.get("track_id"), infer_model_family_from_row(row)))
         dataset_label = extract_dataset_name_from_commands(row.get("commands")) or resolve_target_group_label(row)
         what_changed = build_recent_summary_change_copy(row)
         decision_label, decision_tone = humanize_decision(row.get("decision"))
@@ -3100,6 +5159,7 @@ def build_recent_experiment_summaries(
                 "recorded_at_local": format_local_timestamp(row.get("recorded_at")),
                 "dataset_label": dataset_label,
                 "method_label": method_label,
+                "role_label": role_label,
                 "decision_label": decision_label,
                 "decision_tone": decision_tone,
                 "what_changed": what_changed,
@@ -3168,10 +5228,11 @@ def build_story_highlight(row: dict[str, Any] | None, *, section_title: str, sec
     )
     decision_label, decision_tone = humanize_decision(row.get("decision"))
     method_label = humanize_model_family(infer_model_family_from_row(row))
+    role_label = humanize_track_role(infer_track_role(row.get("track_id"), infer_model_family_from_row(row)))
     dataset_label = extract_dataset_name_from_commands(row.get("commands")) or resolve_target_group_label(row)
     track_label = humanize_track(row.get("track_id"))
     title = " · ".join(
-        part for part in [method_label if method_label != "未标注模型" else None, track_label if track_label != "未标注 track" else None] if part
+        part for part in [method_label if method_label != "当前方法" else None, track_label if track_label != "未标注 track" else None] if part
     ) or summarize_latest_summary(row)
     if section_kind == "formal":
         result_label = format_experiment_result_label(row)
@@ -3189,6 +5250,7 @@ def build_story_highlight(row: dict[str, Any] | None, *, section_title: str, sec
         "recorded_at_local": format_local_timestamp(row.get("recorded_at")),
         "dataset_label": dataset_label,
         "method_label": method_label,
+        "role_label": role_label,
         "track_label": track_label,
         "decision_label": decision_label,
         "decision_tone": decision_tone,
@@ -3232,6 +5294,320 @@ def build_recent_story_highlights(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _build_framework_benchmark() -> dict[str, Any] | None:
+    """Compute framework scheduling benchmark metrics from ledger data.
+
+    Returns a lightweight summary suitable for dashboard display,
+    or None if no data is available.  Results are cached and refreshed
+    when either ledger file changes on disk.
+    """
+    global _benchmark_metrics_cache, _benchmark_metrics_mtime
+
+    paths = [p for p in (EXPERIMENT_LEDGER_PATH, EXTRA_LEDGER_PATH) if p.exists()]
+    if not paths:
+        return None
+
+    current_mtime = max(p.stat().st_mtime for p in paths)
+    if _benchmark_metrics_cache is not None and current_mtime <= _benchmark_metrics_mtime:
+        return _benchmark_metrics_cache
+
+    try:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from benchmark_framework_scheduling import compute_scheduling_metrics, load_ledger
+    except ImportError:
+        return None
+
+    all_rows: list[dict[str, Any]] = []
+    for p in paths:
+        all_rows.extend(load_ledger(p))
+    if not all_rows:
+        return None
+
+    metrics = compute_scheduling_metrics(all_rows)
+
+    dd = metrics.get("direction_diversity", {})
+    be = metrics.get("breakthrough_efficiency", {})
+    st = metrics.get("stagnation", {})
+
+    # Compute autonomous_duration from timestamps
+    timestamps = []
+    for row in all_rows:
+        ts_str = row.get("recorded_at")
+        if ts_str:
+            for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+                try:
+                    dt = datetime.strptime(str(ts_str)[:26], fmt[:26] if len(fmt) > 20 else fmt)
+                    timestamps.append(dt)
+                    break
+                except ValueError:
+                    continue
+
+    # Find longest continuous work session (gap > 2h = new session)
+    autonomous_minutes = 0.0
+    if len(timestamps) >= 2:
+        timestamps.sort()
+        session_start = timestamps[0]
+        prev = timestamps[0]
+        longest_session = timedelta(0)
+        for ts in timestamps[1:]:
+            gap = ts - prev
+            if gap > timedelta(hours=2):
+                session_len = prev - session_start
+                if session_len > longest_session:
+                    longest_session = session_len
+                session_start = ts
+            prev = ts
+        final_session = prev - session_start
+        if final_session > longest_session:
+            longest_session = final_session
+        autonomous_minutes = longest_session.total_seconds() / 60
+
+    # Direction switch count: count changes in algorithm family across iterations
+    direction_switches = 0
+    prev_family = None
+    sorted_rows = sorted(all_rows, key=lambda r: str(r.get("recorded_at") or ""))
+    for row in sorted_rows:
+        track_id = str(row.get("track_id") or "").lower()
+        family = None
+        for token in ("cnn_lstm", "state_space", "conformer", "tcn", "gru", "lstm", "ridge", "xgboost"):
+            if token in track_id:
+                family = token
+                break
+        if family and prev_family and family != prev_family:
+            direction_switches += 1
+        if family:
+            prev_family = family
+
+    result = {
+        "total_iterations": metrics.get("total_iterations", 0),
+        "time_span_hours": metrics.get("time_span_hours", 0),
+        "diversity_index": dd.get("diversity_index", 0),
+        "unique_families": dd.get("unique_families", 0),
+        "breakthrough_rate": be.get("breakthrough_rate", 0),
+        "breakthrough_count": be.get("breakthrough_count", 0),
+        "cost_per_breakthrough": be.get("cost_per_breakthrough"),
+        "final_best_val_r": be.get("final_best_val_r"),
+        "max_dry_streak": st.get("max_dry_streak", 0),
+        "max_stagnation_hours": st.get("max_stagnation_hours", 0),
+        "autonomous_duration_minutes": round(autonomous_minutes, 1),
+        "direction_switches": direction_switches,
+        "iterations_per_hour": metrics.get("iterations_per_hour", 0),
+    }
+
+    _benchmark_metrics_cache = result
+    _benchmark_metrics_mtime = current_mtime
+    return result
+
+
+def _campaign_matches(payload: dict[str, Any], campaign_id: str | None) -> bool:
+    if not campaign_id:
+        return False
+    payload_campaign_id = as_text_or_none(payload.get("campaign_id"))
+    if payload_campaign_id == campaign_id:
+        return True
+    run_id = as_text_or_none(payload.get("run_id")) or ""
+    return run_id.startswith(f"{campaign_id}-")
+
+
+def _normalize_stop_reason(status: dict[str, Any] | None) -> str:
+    payload = status if isinstance(status, dict) else {}
+    stop_reason = as_text_or_none(payload.get("stop_reason"))
+    if stop_reason and stop_reason.lower() != "none":
+        return stop_reason
+    stage = as_text_or_none(payload.get("stage")) or "-"
+    campaign_mode = as_text_or_none(payload.get("campaign_mode"))
+    if campaign_mode:
+        return f"{stage} / {campaign_mode}"
+    return stage
+
+
+def build_current_campaign_benchmark(
+    status: dict[str, Any] | None,
+    experiment_rows: list[dict[str, Any]],
+    query_rows: list[dict[str, Any]],
+    evidence_rows: list[dict[str, Any]],
+    judgment_rows: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    payload = status if isinstance(status, dict) else {}
+    campaign_id = as_text_or_none(payload.get("campaign_id"))
+    if not campaign_id:
+        return None
+
+    started_at = parse_timestamp(payload.get("started_at"))
+    updated_at = parse_timestamp(payload.get("updated_at"))
+    elapsed_minutes = None
+    if started_at and updated_at:
+        elapsed_minutes = max(0.0, round((updated_at - started_at).total_seconds() / 60.0, 1))
+
+    matching_rows = [
+        row
+        for row in sort_progress_rows(experiment_rows)
+        if _campaign_matches(row, campaign_id) and not bool(row.get("is_synthetic_anchor"))
+    ]
+    matching_queries = [
+        row
+        for row in sorted(query_rows, key=lambda item: as_text_or_none(item.get("recorded_at")) or "")
+        if _campaign_matches(row, campaign_id)
+    ]
+    matching_evidence = [
+        row
+        for row in sorted(evidence_rows, key=lambda item: as_text_or_none(item.get("recorded_at")) or "")
+        if _campaign_matches(row, campaign_id)
+    ]
+    matching_judgments = [
+        row
+        for row in sorted(judgment_rows, key=lambda item: as_text_or_none(item.get("recorded_at")) or "")
+        if _campaign_matches(row, campaign_id)
+    ]
+
+    families_tried_raw = dedupe_preserving_order(
+        [
+            infer_model_family_from_row(row)
+            for row in matching_rows
+            if infer_model_family_from_row(row) not in {None, "", "chance_baseline"}
+        ]
+    )
+    formal_families_raw = dedupe_preserving_order(
+        [
+            infer_model_family_from_row(row)
+            for row in matching_rows
+            if _is_formal_result_row(row) and infer_model_family_from_row(row) not in {None, "", "chance_baseline"}
+        ]
+    )
+    latest_query_samples = dedupe_preserving_order(
+        [as_text_or_none(row.get("query")) or "" for row in matching_queries]
+    )[-3:]
+    latest_judgment = matching_judgments[-1] if matching_judgments else {}
+    latest_recommendation = (
+        as_text_or_none(latest_judgment.get("next_recommended_action"))
+        or as_text_or_none(latest_judgment.get("queue_update"))
+        or None
+    )
+    active_track_id = as_text_or_none(payload.get("active_track_id"))
+    active_track_row = next(
+        (
+            row
+            for row in reversed(matching_rows)
+            if as_text_or_none(row.get("track_id")) == active_track_id
+        ),
+        {},
+    )
+    active_timing = extract_timing_metadata(active_track_row)
+    if active_timing.get("timing_label") is None:
+        active_timing = parse_gait_timing_track_id(active_track_id) or active_timing
+    active_timing_label = (
+        as_text_or_none(payload.get("current_timing_label"))
+        or format_timing_label(payload.get("current_window_seconds"), payload.get("current_global_lag_ms"))
+        or active_timing.get("timing_label")
+    )
+
+    families_tried_count = len(families_tried_raw)
+    formal_families_count = len(formal_families_raw)
+    search_query_count = len(matching_queries)
+    evidence_count = len(matching_evidence)
+
+    risk_flags: list[dict[str, Any]] = []
+    risk_flags.append(
+        {
+            "kind": "external_search",
+            "label": "外部搜索",
+            "status": "风险" if search_query_count == 0 else "正常",
+            "tone": "warn" if search_query_count == 0 else "ok",
+            "detail": "没有搜索记录。" if search_query_count == 0 else f"已搜索 {search_query_count} 次。",
+        }
+    )
+    risk_flags.append(
+        {
+            "kind": "direction_switch",
+            "label": "换方向",
+            "status": "风险" if families_tried_count <= 1 else "正常",
+            "tone": "warn" if families_tried_count <= 1 else "ok",
+            "detail": "只试了 1 个算法族。" if families_tried_count <= 1 else f"已尝试 {families_tried_count} 个算法族。",
+        }
+    )
+    if families_tried_count <= 1:
+        formal_status = "提示" if formal_families_count == 1 else "风险"
+        formal_tone = "warn"
+    elif formal_families_count == 0:
+        formal_status = "风险"
+        formal_tone = "warn"
+    elif formal_families_count < max(1, math.ceil(families_tried_count / 3)):
+        formal_status = "提示"
+        formal_tone = "warn"
+    else:
+        formal_status = "正常"
+        formal_tone = "ok"
+    risk_flags.append(
+        {
+            "kind": "formal_coverage",
+            "label": "Formal 覆盖",
+            "status": formal_status,
+            "tone": formal_tone,
+            "detail": f"{formal_families_count}/{families_tried_count or 0} 个算法族进了 formal。",
+        }
+    )
+    is_fast_closeout = (
+        (as_text_or_none(payload.get("stage")) == "done")
+        and elapsed_minutes is not None
+        and elapsed_minutes < 30
+    )
+    risk_flags.append(
+        {
+            "kind": "fast_closeout",
+            "label": "收口速度",
+            "status": "风险" if is_fast_closeout else "正常",
+            "tone": "warn" if is_fast_closeout else "ok",
+            "detail": (
+                f"{elapsed_minutes:.1f} 分钟后收口。"
+                if is_fast_closeout and elapsed_minutes is not None
+                else "没有明显过快收口。"
+            ),
+        }
+    )
+    risk_flags.append(
+        {
+            "kind": "recommendation_chain",
+            "label": "推荐链路",
+            "status": "风险" if not latest_recommendation else "正常",
+            "tone": "warn" if not latest_recommendation else "ok",
+            "detail": latest_recommendation or "没有读到下一步建议。",
+        }
+    )
+
+    return {
+        "campaign_id": campaign_id,
+        "stage": as_text_or_none(payload.get("stage")) or "-",
+        "campaign_mode": as_text_or_none(payload.get("campaign_mode")) or "-",
+        "updated_at_local": format_local_timestamp(payload.get("updated_at")),
+        "active_track_id": active_track_id,
+        "active_track_label": humanize_track(active_track_id),
+        "active_timing_label": active_timing_label,
+        "active_window_seconds": active_timing.get("window_seconds"),
+        "active_global_lag_ms": active_timing.get("global_lag_ms"),
+        "current_iteration": payload.get("current_iteration"),
+        "max_iterations": payload.get("max_iterations"),
+        "patience": payload.get("patience"),
+        "elapsed_minutes": elapsed_minutes,
+        "elapsed_label": (
+            f"{elapsed_minutes:.1f} 分钟"
+            if elapsed_minutes is not None
+            else "未知"
+        ),
+        "families_tried": families_tried_raw,
+        "families_tried_labels": [humanize_model_family(item) for item in families_tried_raw],
+        "families_tried_count": families_tried_count,
+        "formal_families": formal_families_raw,
+        "formal_families_labels": [humanize_model_family(item) for item in formal_families_raw],
+        "formal_families_count": formal_families_count,
+        "search_query_count": search_query_count,
+        "evidence_count": evidence_count,
+        "latest_query_samples": latest_query_samples,
+        "latest_recommendation": latest_recommendation,
+        "stop_reason": _normalize_stop_reason(payload),
+        "risk_flags": risk_flags,
+    }
+
+
 def build_status() -> dict[str, Any]:
     dataset = read_dataset_summary()
     process = get_training_process()
@@ -3249,7 +5625,11 @@ def build_status() -> dict[str, Any]:
     manifest = read_json(MANIFEST_PATH)
     channel_qc = read_json(CHANNEL_QC_PATH)
     kinematics_qc = read_json(KINEMATICS_QC_PATH)
-    experiment_rows = merge_ledger_rows(read_jsonl(EXPERIMENT_LEDGER_PATH), read_jsonl(EXTRA_LEDGER_PATH))
+    primary_ledger_rows = read_jsonl(EXPERIMENT_LEDGER_PATH)
+    extra_ledger_rows = [] if is_gait_phase_benchmark_mode() else read_jsonl(EXTRA_LEDGER_PATH)
+    raw_experiment_rows = [*primary_ledger_rows, *extra_ledger_rows]
+    experiment_rows = merge_ledger_rows(primary_ledger_rows, extra_ledger_rows)
+    judgment_rows = read_jsonl(JUDGMENT_UPDATES_PATH)
     research_digest = build_research_digest(
         query_rows=read_jsonl(RESEARCH_QUERIES_PATH),
         evidence_rows=read_jsonl(RESEARCH_EVIDENCE_PATH),
@@ -3270,18 +5650,45 @@ def build_status() -> dict[str, Any]:
     else:
         process_registry = local_process_registry
     memory_events = read_jsonl(MEMORY_EVENTS_PATH)
-    memory_guard = build_memory_guard_summary(autobci_remote_runtime, process_registry, memory_events)
+    memory_guard = build_memory_guard_summary(autobci_remote_runtime, process_registry, memory_events, autoresearch_status)
     current_strategy = CURRENT_STRATEGY_PATH.read_text(encoding="utf-8") if CURRENT_STRATEGY_PATH.exists() else None
     progress_rows = build_progress_rows(autoresearch_status, experiment_rows)
     progress_groups = build_progress_groups(progress_rows)
     time_domain = build_progress_time_domain(progress_rows)
-    mainline_progress = build_mainline_progress(autoresearch_status, progress_rows)
+    mainline_progress = build_mainline_progress(
+        autoresearch_status,
+        progress_rows,
+        research_tree_text=current_strategy,
+    )
     plateau = build_plateau_status(autoresearch_status)
+    active_processes = memory_guard.get("active_processes") if isinstance(memory_guard, dict) and isinstance(memory_guard.get("active_processes"), list) else []
+    live_process = find_live_training_process(active_processes)
+    active_track_id = as_text_or_none((autoresearch_status or {}).get("active_track_id"))
+    active_track_role = infer_track_role(
+        active_track_id,
+        infer_model_family_from_text(live_process.get("model_family")) or infer_model_family_from_text(active_track_id),
+    )
+    active_track_runtime = build_track_runtime_copy(
+        active_track_id=active_track_id,
+        track_role=active_track_role,
+        has_training_subprocess=bool(live_process),
+        stage=(autoresearch_status or {}).get("stage"),
+        stop_loss_active=is_manual_stop_loss_state(autoresearch_status),
+    )
+    mode_label, mode_tone = humanize_campaign_mode(autoresearch_status)
     progress = {
         "campaign_id": as_text_or_none((autoresearch_status or {}).get("campaign_id")),
         "stage": as_text_or_none((autoresearch_status or {}).get("stage")),
-        "active_track_id": as_text_or_none((autoresearch_status or {}).get("active_track_id")),
-        "active_track_label": humanize_track((autoresearch_status or {}).get("active_track_id")),
+        "campaign_mode": as_text_or_none((autoresearch_status or {}).get("campaign_mode")),
+        "mode_label": mode_label,
+        "mode_tone": mode_tone,
+        "active_track_id": active_track_id,
+        "active_track_label": humanize_track(active_track_id),
+        "active_track_role": active_track_role,
+        "active_track_role_label": humanize_track_role(active_track_role),
+        "track_runtime_label": active_track_runtime["track_runtime_label"],
+        "track_status_summary": active_track_runtime["track_status_summary"],
+        "last_track_label": active_track_runtime["last_track_label"],
         "current_iteration": (autoresearch_status or {}).get("current_iteration"),
         "max_iterations": (autoresearch_status or {}).get("max_iterations"),
         "patience": (autoresearch_status or {}).get("patience"),
@@ -3322,6 +5729,18 @@ def build_status() -> dict[str, Any]:
         latest_metrics=latest_metrics,
         experiment_rows=experiment_rows,
     )
+    queue_compiler = build_queue_compiler_summary(autobci_remote_runtime)
+    data_access = build_data_access_summary(autobci_remote_runtime)
+    control_plane = build_control_plane_summary(
+        progress_rows=progress_rows,
+        status=autoresearch_status,
+        remote_runtime=autobci_remote_runtime,
+    )
+    control_plane_snapshot = build_status_snapshot()
+    mission_control = build_mission_control_payload(
+        control_plane_snapshot,
+        recent_control_events=read_recent_control_events(CONTROL_EVENTS_PATH, limit=8),
+    )
 
     artifacts = []
     for path in sorted(ARTIFACTS_DIR.glob("*")):
@@ -3358,7 +5777,7 @@ def build_status() -> dict[str, Any]:
     }
 
     return {
-        "updated_at": datetime.now().isoformat(),
+        "updated_at": local_now().isoformat(),
         "dataset": dataset,
         "training": {
             **process,
@@ -3373,6 +5792,8 @@ def build_status() -> dict[str, Any]:
         "dashboard_headline": dashboard_headline,
         "operator_summary": operator_summary,
         "axis_summary": axis_summary,
+        "mission_control": mission_control,
+        "control_plane": control_plane,
         "progress": progress,
         "mainline_progress": mainline_progress,
         "time_domain": time_domain,
@@ -3393,12 +5814,381 @@ def build_status() -> dict[str, Any]:
         "current_strategy": current_strategy,
         "prediction_preview": prediction_preview,
         "prediction_preview_summary": prediction_preview_summary,
+        "queue_compiler": queue_compiler,
+        "data_access": data_access,
         "artifacts": artifacts,
         "checkpoint": checkpoint_info,
+        "current_campaign_benchmark": build_current_campaign_benchmark(
+            autoresearch_status,
+            raw_experiment_rows,
+            read_jsonl(RESEARCH_QUERIES_PATH),
+            read_jsonl(RESEARCH_EVIDENCE_PATH),
+            judgment_rows,
+        ),
+        "framework_benchmark": _build_framework_benchmark(),
     }
 
 
+def build_mission_control_payload(
+    snapshot: dict[str, Any] | None,
+    *,
+    recent_control_events: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    payload = snapshot or {}
+    runtime_state = payload.get("runtime_state") if isinstance(payload.get("runtime_state"), dict) else {}
+    autoresearch_status = payload.get("autoresearch_status") if isinstance(payload.get("autoresearch_status"), dict) else {}
+    effective_stage = as_text_or_none(autoresearch_status.get("stage")) or as_text_or_none(payload.get("stage"))
+    effective_updated_at = as_text_or_none(autoresearch_status.get("updated_at")) or as_text_or_none(payload.get("updated_at"))
+    latest_retrieval = payload.get("latest_retrieval_packet") if isinstance(payload.get("latest_retrieval_packet"), dict) else {}
+    latest_decision = payload.get("latest_decision_packet") if isinstance(payload.get("latest_decision_packet"), dict) else {}
+    latest_judgment_updates = payload.get("latest_judgment_updates") if isinstance(payload.get("latest_judgment_updates"), list) else []
+    topics = [item for item in (payload.get("topics") if isinstance(payload.get("topics"), list) else []) if isinstance(item, dict)]
+    recent_events = list(recent_control_events or [])
+    thinking_overview = payload.get("thinking_overview") if isinstance(payload.get("thinking_overview"), dict) else {}
+    automation_state = payload.get("automation_state") if isinstance(payload.get("automation_state"), dict) else {}
+    runtime_automation_state = {
+        "last_auto_pivot_at": runtime_state.get("last_auto_pivot_at"),
+        "active_incubation_track_id": runtime_state.get("active_incubation_track_id"),
+    }
+    recommended_incubation = payload.get("recommended_incubation") if isinstance(payload.get("recommended_incubation"), dict) else {}
+    runtime_recommended_incubation = runtime_state.get("recommended_incubation") if isinstance(runtime_state.get("recommended_incubation"), dict) else {}
+    active_incubation_campaigns = [
+        item
+        for item in (payload.get("active_incubation_campaigns") if isinstance(payload.get("active_incubation_campaigns"), list) else [])
+        if isinstance(item, dict)
+    ]
+    if not active_incubation_campaigns:
+        active_incubation_campaigns = [
+            item
+            for item in (runtime_state.get("active_incubation_campaigns") if isinstance(runtime_state.get("active_incubation_campaigns"), list) else [])
+            if isinstance(item, dict)
+        ]
+
+    current_problem = (
+        as_text_or_none(latest_retrieval.get("current_problem_statement"))
+        or as_text_or_none(payload.get("last_research_judgment_update"))
+        or "当前还没有结构化关键问题。"
+    )
+    recommended_queue = [
+        str(item).strip()
+        for item in (latest_decision.get("recommended_queue") or [])
+        if str(item).strip()
+    ]
+    recommended_formal_candidates = [
+        str(item).strip()
+        for item in (latest_decision.get("recommended_formal_candidates") or [])
+        if str(item).strip()
+    ]
+    latest_judgment = latest_judgment_updates[0] if latest_judgment_updates else {}
+    latest_event = recent_events[0] if recent_events else {}
+    shared_budget_limit = int(
+        (
+            latest_decision.get("tool_usage_summary", {}).get("budget_limit")
+            if isinstance(latest_decision.get("tool_usage_summary"), dict)
+            else 0
+        )
+        or 0
+    ) or int(
+        (
+            latest_retrieval.get("budget_and_queue_state", {}).get("tool_budget_limit")
+            if isinstance(latest_retrieval.get("budget_and_queue_state"), dict)
+            else 0
+        )
+        or 0
+    ) or int(
+        next(
+            (
+                (item.get("search_budget_state") or {}).get("budget_limit")
+                for item in topics
+                if isinstance(item, dict) and isinstance(item.get("search_budget_state"), dict)
+            ),
+            0,
+        )
+        or 0
+    )
+    stale_reason_codes = list(
+        dict.fromkeys(
+            str(code).strip()
+            for source in [
+                latest_decision.get("stale_reason_codes") or [],
+                latest_judgment.get("stale_reason_codes") or [],
+                *[(item.get("stale_reason_codes") or []) for item in topics],
+            ]
+            for code in source
+            if str(code).strip()
+        )
+    )
+    search_budget_summary = summarize_budget_usage(
+        {
+            **(
+                latest_decision.get("search_budget_summary")
+                if isinstance(latest_decision.get("search_budget_summary"), dict)
+                else next(
+                    (
+                        item.get("search_budget_state")
+                        for item in topics
+                        if isinstance(item.get("search_budget_state"), dict)
+                    ),
+                    {},
+                )
+            ),
+            "budget_limit": shared_budget_limit,
+        },
+    )
+    tool_usage_summary = summarize_budget_usage(
+        {
+            **(
+                latest_decision.get("tool_usage_summary")
+                if isinstance(latest_decision.get("tool_usage_summary"), dict)
+                else next(
+                    (
+                        item.get("tool_usage_summary")
+                        for item in topics
+                        if isinstance(item.get("tool_usage_summary"), dict)
+                    ),
+                    {},
+                )
+            ),
+            "budget_limit": shared_budget_limit,
+        },
+        include_search=False,
+    )
+    topic_observability = []
+    state_counts: dict[str, int] = {}
+    for item in topics:
+        state_key = as_text_or_none(item.get("materialization_state")) or ""
+        if state_key:
+            state_counts[state_key] = state_counts.get(state_key, 0) + 1
+        chips = [
+            chip
+            for chip in [
+                as_text_or_none(item.get("status")),
+                materialization_state_label(state_key) if state_key else "",
+                *(str(code).strip() for code in (item.get("stale_reason_codes") or []) if str(code).strip()),
+            ]
+            if chip
+        ]
+        topic_observability.append(
+            {
+                "topic_id": as_text_or_none(item.get("topic_id")) or "-",
+                "title": as_text_or_none(item.get("title")) or as_text_or_none(item.get("topic_id")) or "未命名 topic",
+                "materialization_state": state_key,
+                "materialization_state_label": materialization_state_label(state_key),
+                "materialized_track_id": as_text_or_none(item.get("materialized_track_id")) or "",
+                "materialized_run_id": as_text_or_none(item.get("materialized_run_id")) or "",
+                "materialized_smoke_path": as_text_or_none(item.get("materialized_smoke_path")) or "",
+                "age_label": format_age_label(item.get("updated_at") or item.get("last_decision_at")),
+                "chips": chips,
+            }
+        )
+    thinking_trace = [
+        {
+            "role": "Thinker",
+            "recorded_at": format_local_timestamp(latest_event.get("recorded_at")),
+            "summary": current_problem,
+            "detail": f"证据 {len(latest_retrieval.get('relevant_evidence') or [])} 条 · 当前 topic {len(topics)} 个。",
+        },
+        {
+            "role": "Planner",
+            "recorded_at": format_local_timestamp(latest_event.get("recorded_at")),
+            "summary": as_text_or_none(latest_decision.get("research_judgment_delta")) or "当前还没有新的队列判断。",
+            "detail": "推荐队列：" + (" / ".join(recommended_queue[:3]) if recommended_queue else "当前还没有推荐队列。") + (f" · 阻塞原因：{', '.join(stale_reason_codes[:3])}" if stale_reason_codes else ""),
+        },
+        {
+            "role": "Worker",
+            "recorded_at": format_local_timestamp(autoresearch_status.get("updated_at")),
+            "summary": "当前执行：" + (
+                as_text_or_none(payload.get("current_track_id"))
+                or as_text_or_none(autoresearch_status.get("active_track_id"))
+                or "当前还没有 active track。"
+            ),
+            "detail": "阶段：" + (
+                as_text_or_none(payload.get("stage"))
+                or as_text_or_none(autoresearch_status.get("stage"))
+                or "未知"
+            ),
+        },
+    ]
+    thinking_trace.append(
+        {
+            "role": "Materializer",
+            "recorded_at": format_local_timestamp(latest_decision.get("recorded_at")),
+            "summary": "主题物化：" + (", ".join(f"{key} {value}" for key, value in sorted(state_counts.items()) if value) or "当前还没有 topic 物化结果。"),
+            "detail": "当前物化状态：" + (", ".join(sorted(state_counts.keys())) if state_counts else "还没形成新的 runnable track。"),
+        }
+    )
+    thinking_trace.append(
+        {
+            "role": "Judgment",
+            "recorded_at": format_local_timestamp(latest_judgment.get("recorded_at")),
+            "summary": as_text_or_none(latest_judgment.get("reason")) or "当前还没有新的 judgment。",
+            "detail": as_text_or_none(latest_judgment.get("next_recommended_action")) or "等待下一轮判断。",
+        },
+    )
+
+    mission_control = {
+        "current_problem": current_problem,
+        "current_problem_statement": current_problem,
+        "current_task": as_text_or_none(payload.get("current_task")),
+        "current_run": {
+            "mission_id": as_text_or_none(runtime_state.get("mission_id")),
+            "campaign_id": as_text_or_none(payload.get("campaign_id")),
+            "stage": as_text_or_none(payload.get("stage")),
+            "active_track_id": as_text_or_none(payload.get("current_track_id")),
+            "runtime_state": as_text_or_none(runtime_state.get("runtime_status")),
+            "agent_status": as_text_or_none(payload.get("agent_status")),
+        },
+        "mission_id": as_text_or_none(runtime_state.get("mission_id")),
+        "campaign_id": as_text_or_none(payload.get("campaign_id")),
+        "active_track_id": as_text_or_none(payload.get("current_track_id")),
+        "updated_at_local": format_local_timestamp(effective_updated_at),
+        "topics": topics,
+        "topic_inbox": topics,
+        "topic_count": len(topics),
+        "recommended_queue": recommended_queue,
+        "queue_count": len(recommended_queue),
+        "recommended_formal_candidates": recommended_formal_candidates,
+        "latest_judgment_updates": latest_judgment_updates,
+        "judgments": latest_judgment_updates,
+        "judgment_count": len(latest_judgment_updates),
+        "automation_state": {
+            "stagnation_level": as_text_or_none(automation_state.get("stagnation_level")) or as_text_or_none(thinking_overview.get("stagnation_level")) or "unknown",
+            "days_without_breakthrough": automation_state.get("days_without_breakthrough", thinking_overview.get("days_without_breakthrough")),
+            "last_auto_pivot_at": format_local_timestamp(automation_state.get("last_auto_pivot_at") or runtime_automation_state.get("last_auto_pivot_at")),
+            "active_incubation_track_id": as_text_or_none(automation_state.get("active_incubation_track_id") or runtime_automation_state.get("active_incubation_track_id")) or "",
+        },
+        "recommended_incubation": {
+            "family": as_text_or_none(recommended_incubation.get("family") or runtime_recommended_incubation.get("family")) or "",
+            "topic_id": as_text_or_none(recommended_incubation.get("topic_id") or runtime_recommended_incubation.get("topic_id")) or "",
+            "track_id": as_text_or_none(recommended_incubation.get("track_id") or runtime_recommended_incubation.get("track_id")) or "",
+        },
+        "active_incubation_campaigns": active_incubation_campaigns,
+        "latest_retrieval_summary": {
+            "current_problem_statement": current_problem,
+            "topic_count": len(topics),
+            "evidence_count": len(latest_retrieval.get("relevant_evidence") or []),
+        },
+        "true_progress": {
+            "retrieval": build_progress_marker(latest_retrieval.get("recorded_at"), now=utc_now()),
+            "decision": build_progress_marker(latest_decision.get("recorded_at"), now=utc_now()),
+            "judgment": build_progress_marker(latest_judgment.get("recorded_at"), now=utc_now()),
+        },
+        "stuck_reason_codes": stale_reason_codes,
+        "search_budget_summary": search_budget_summary,
+        "tool_usage_summary": tool_usage_summary,
+        "incubation_summary": {
+            "state_counts": state_counts,
+        },
+        "topic_observability": topic_observability,
+        "latest_decision": latest_decision,
+        "available_actions": ["think", "execute", "pause", "resume", "end"],
+        "recent_control_events": recent_events,
+        "control_events": recent_events,
+        "thinking_trace": thinking_trace,
+        "pipeline_status": {
+            "stages": [
+                {"id": "topics", "label": "Topic Inbox", "count": len(topics), "tone": "ok" if topics else "off"},
+                {"id": "retrieval", "label": "Retrieval", "done": bool(latest_retrieval), "tone": "ok" if latest_retrieval else "off", "at": format_local_timestamp(latest_retrieval.get("recorded_at"))},
+                {"id": "decision", "label": "Decision", "done": bool(latest_decision), "tone": "ok" if latest_decision else "off", "summary": (summarize_text(latest_decision.get("research_judgment_delta")) or "-")[:40]},
+                {"id": "queue", "label": "Queue", "count": len(recommended_queue), "tone": "warn" if not recommended_queue else "ok"},
+                {"id": "worker", "label": "Worker", "tone": "ok" if effective_stage else "off", "summary": effective_stage or "idle"},
+            ],
+        },
+        "summary": as_text_or_none(latest_decision.get("research_judgment_delta")) or current_problem,
+        "next_step": recommended_queue[0] if recommended_queue else (as_text_or_none(latest_judgment.get("next_recommended_action")) or "-"),
+        "next_recommended_action": as_text_or_none(latest_judgment.get("next_recommended_action")) or (recommended_queue[0] if recommended_queue else "-"),
+        "research_tree": [
+            {
+                "title": as_text_or_none(item.get("title")) or as_text_or_none(item.get("topic_id")) or "未命名 topic",
+                "meta": as_text_or_none(item.get("goal")) or as_text_or_none(item.get("blocked_reason")) or as_text_or_none(item.get("last_decision_summary")),
+                "chips": [
+                    chip
+                    for chip in [
+                        as_text_or_none(item.get("status")),
+                        materialization_state_label(item.get("materialization_state")) if as_text_or_none(item.get("materialization_state")) else "",
+                        "可晋升" if bool(item.get("promotable")) else "",
+                        *(str(code).strip() for code in (item.get("stale_reason_codes") or []) if str(code).strip()),
+                    ]
+                    if chip
+                ],
+            }
+            for item in topics[:8]
+        ],
+        "mode_label": humanize_campaign_mode(autoresearch_status)[0],
+        "mode_tone": humanize_campaign_mode(autoresearch_status)[1],
+    }
+    return mission_control
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
+    def _read_json_body(self) -> dict[str, Any]:
+        content_length = int(self.headers.get("Content-Length", "0") or "0")
+        if content_length <= 0:
+            return {}
+        raw = self.rfile.read(content_length)
+        if not raw:
+            return {}
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _run_control_cli(self, action: str, payload: dict[str, Any]) -> dict[str, Any]:
+        args = [
+            sys.executable,
+            "-m",
+            "bci_autoresearch.control_plane.cli",
+            action,
+            "--repo-root",
+            str(ROOT),
+        ]
+        if action == "execute":
+            task = str(payload.get("task") or "").strip()
+            if not task:
+                message = "需要先输入一条研究任务，才能执行 Execute。"
+                row = record_control_event(
+                    CONTROL_EVENTS_PATH,
+                    action=action,
+                    ok=False,
+                    message=message,
+                    input_payload=payload,
+                )
+                return {
+                    "ok": False,
+                    "action": action,
+                    "message": message,
+                    "recorded_at": row["recorded_at"],
+                }
+            args.append(task)
+
+        result = subprocess.run(
+            args,
+            cwd=ROOT,
+            env={
+                **os.environ,
+                "PYTHONPATH": f"{SRC}:{os.environ.get('PYTHONPATH', '')}".rstrip(":"),
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        ok = result.returncode == 0
+        message = (result.stdout or result.stderr or "").strip() or ("ok" if ok else "control action failed")
+        row = record_control_event(
+            CONTROL_EVENTS_PATH,
+            action=action,
+            ok=ok,
+            message=message,
+            input_payload=payload,
+        )
+        return {
+            "ok": ok,
+            "action": action,
+            "message": message,
+            "recorded_at": row["recorded_at"],
+        }
+
     def _send_json(self, payload: dict[str, Any], status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -3431,6 +6221,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json(build_status())
             return
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+
+    def do_POST(self) -> None:
+        action_map = {
+            "/api/control/think": "think",
+            "/api/control/execute": "execute",
+            "/api/control/pause": "pause",
+            "/api/control/resume": "resume",
+            "/api/control/end": "end",
+        }
+        action = action_map.get(self.path)
+        if action is None:
+            self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+            return
+        payload = self._read_json_body()
+        result = self._run_control_cli(action, payload)
+        self._send_json(result, status=HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
 
     def do_HEAD(self) -> None:
         if self.path in {"/", "/index.html"}:

@@ -14,6 +14,11 @@ from .segment_diagnostics import (
     build_segment_candidates,
     select_hard_segment,
 )
+from .train_script_gates import (
+    normalize_artifact_probe,
+    validate_bin_size_ms,
+    write_preflight_payload,
+)
 
 __all__ = [
     "build_amplitude_comparison",
@@ -25,5 +30,8 @@ __all__ = [
     "format_feature_lstm_seed_sweep_markdown",
     "format_xgboost_seed_sweep_markdown",
     "format_amplitude_report_markdown",
+    "normalize_artifact_probe",
     "select_hard_segment",
+    "validate_bin_size_ms",
+    "write_preflight_payload",
 ]

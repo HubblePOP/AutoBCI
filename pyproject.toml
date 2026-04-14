@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "Local strict-causal BCI starter for Intan RHD + Vicon CSV"
 requires-python = ">=3.10"
 
+[project.scripts]
+autobci-agent = "bci_autoresearch.control_plane.cli:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

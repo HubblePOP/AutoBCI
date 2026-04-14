@@ -145,20 +145,11 @@ test("repo plumbing and structure manifests expose multi-family execution plans"
   );
   assert.deepEqual(
     structure.tracks.map((track) => track.trackId),
-    [
-      "canonical_mainline_feature_lstm",
-      "canonical_mainline_tree_xgboost",
-      "relative_origin_xyz_feature_lstm",
-    ],
-  );
-  assert.deepEqual(
     current.tracks.map((track) => track.trackId),
-    [
-      "canonical_mainline_feature_lstm",
-      "canonical_mainline_tree_xgboost",
-      "relative_origin_xyz_feature_lstm",
-    ],
   );
+  assert.ok(current.tracks.some((track) => track.trackId === "canonical_mainline_tree_xgboost"));
+  assert.ok(current.tracks.some((track) => track.trackId === "phase_conditioned_feature_lstm"));
+  assert.ok(current.tracks.some((track) => track.trackId === "dmd_sdm_ridge"));
 });
 
 test("loadTrackManifest assigns default expected memory classes from runner family", async () => {
@@ -185,6 +176,22 @@ test("loadTrackManifest assigns default expected memory classes from runner fami
             smoke_command: "python scripts/train_ridge.py",
             formal_command: "python scripts/train_ridge.py --formal",
           },
+          {
+            track_id: "canonical_mainline_feature_gru",
+            runner_family: "feature_gru",
+            track_goal: "Feature GRU mainline.",
+            promotion_target: "canonical_mainline",
+            smoke_command: "python scripts/train_feature_gru.py",
+            formal_command: "python scripts/train_feature_gru.py --formal",
+          },
+          {
+            track_id: "canonical_mainline_feature_tcn",
+            runner_family: "feature_tcn",
+            track_goal: "Feature TCN mainline.",
+            promotion_target: "canonical_mainline",
+            smoke_command: "python scripts/train_feature_tcn.py",
+            formal_command: "python scripts/train_feature_tcn.py --formal",
+          },
         ],
       },
       null,
@@ -199,6 +206,45 @@ test("loadTrackManifest assigns default expected memory classes from runner fami
     });
     assert.equal(manifest.tracks[0]?.expectedMemoryClass, "high");
     assert.equal(manifest.tracks[1]?.expectedMemoryClass, "low");
+    assert.equal(manifest.tracks[2]?.expectedMemoryClass, "high");
+    assert.equal(manifest.tracks[3]?.expectedMemoryClass, "high");
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("loadTrackManifest preserves validated skip-edit tracks for preflighted moonshot queues", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "autoresearch-manifest-validated-"));
+  const manifestPath = path.join(tempRoot, "tracks.json");
+  await writeFile(
+    manifestPath,
+    JSON.stringify(
+      {
+        tracks: [
+          {
+            track_id: "moonshot_upper_bound_feature_gru_lmp_hg_phase_state_scout",
+            topic_id: "same_session_pure_brain_moonshot",
+            runner_family: "feature_gru",
+            track_goal: "Feature GRU moonshot scout.",
+            promotion_target: "same_session_pure_brain_moonshot",
+            smoke_command: "python scripts/train_feature_gru.py --preflight-only",
+            formal_command: "python scripts/train_feature_gru.py --formal",
+            validated: true,
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+
+  try {
+    const manifest = await loadTrackManifest(manifestPath, {
+      defaultAllowedChangeScope: ["scripts"],
+    });
+    assert.equal(manifest.tracks[0]?.validated, true);
+    assert.equal(manifest.tracks[0]?.skipCodexEdit, true);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }

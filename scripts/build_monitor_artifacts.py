@@ -16,8 +16,11 @@ from torch.utils.data import DataLoader, Dataset
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
+SCRIPTS_DIR = ROOT / "scripts"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 from bci_autoresearch.data.session_cache import load_session_cache
 from bci_autoresearch.data.runtime_splits import (
@@ -31,7 +34,7 @@ from bci_autoresearch.data.splits import load_dataset_config, scan_dataset_cache
 from bci_autoresearch.data.vicon_loader import load_vicon_csv
 from bci_autoresearch.eval.metrics import build_marker_axis_grid
 from bci_autoresearch.features import build_feature_sequence, slice_feature_window
-from bci_autoresearch.models.lstm_regressor import LSTMRegressor
+import train_feature_lstm as feature_shared
 
 
 SESSION_RE = re.compile(r"^walk_(\d{8})_(\d+)$")
@@ -466,6 +469,15 @@ def build_prediction_preview(
     dataset,
     current_metrics_payload: dict[str, Any],
 ) -> dict[str, Any]:
+    prediction_payload_path = current_metrics_payload.get("prediction_payload_path")
+    if prediction_payload_path:
+        payload_preview = build_prediction_preview_from_payload(
+            prediction_payload_path=Path(str(prediction_payload_path)),
+            current_metrics_payload=current_metrics_payload,
+        )
+        if payload_preview.get("available"):
+            return payload_preview
+
     checkpoint_path = current_metrics_payload.get("best_checkpoint_path")
     if not checkpoint_path:
         return {
@@ -508,25 +520,29 @@ def build_prediction_preview(
     weights = None
     bias = None
     if model_family == "lstm":
-        model = LSTMRegressor(
+        model = feature_shared.build_feature_sequence_model(
+            model_family="feature_lstm",
             n_channels=len(checkpoint["channel_names"]),
             n_outputs=len(target_names),
             hidden_size=int(checkpoint["hidden_size"]),
             num_layers=int(checkpoint["num_layers"]),
+            dropout=float(checkpoint.get("dropout", 0.1)),
         ).to(device)
         model.load_state_dict(checkpoint["model_state"])
-    elif model_family == "feature_lstm":
-        model = LSTMRegressor(
+    elif model_family in feature_shared.FEATURE_SEQUENCE_MODEL_FAMILIES:
+        model = feature_shared.build_feature_sequence_model(
+            model_family=model_family,
             n_channels=int(len(x_mean)),
             n_outputs=len(target_names),
             hidden_size=int(checkpoint["hidden_size"]),
             num_layers=int(checkpoint["num_layers"]),
+            dropout=float(checkpoint.get("dropout", 0.1)),
         ).to(device)
         model.load_state_dict(checkpoint["model_state"])
         if feature_bin_samples <= 0 or not feature_families:
             return {
                 "available": False,
-                "reason": "Feature LSTM checkpoint 缺少 feature_bin_samples 或 feature_families。",
+                "reason": "Feature-sequence checkpoint 缺少 feature_bin_samples 或 feature_families。",
             }
     elif model_family == "ridge":
         weights = np.asarray(checkpoint["weights"], dtype=np.float32)
@@ -618,7 +634,7 @@ def build_prediction_preview(
                 target_indices = np.asarray(target_indices[supported], dtype=np.int64)
                 if target_indices.size == 0:
                     continue
-                if model_family == "feature_lstm":
+                if model_family in feature_shared.FEATURE_SEQUENCE_MODEL_FAMILIES:
                     preview_ds = PreviewFeatureWindowDataset(
                         feature_sequence=preview_feature_sequence,
                         target_matrix=target_matrix,
@@ -700,6 +716,106 @@ def build_prediction_preview(
         },
         "plane_mode": plane_mode,
         "splits": split_payloads,
+    }
+
+
+def build_prediction_preview_from_payload(
+    *,
+    prediction_payload_path: Path,
+    current_metrics_payload: dict[str, Any],
+) -> dict[str, Any]:
+    if not prediction_payload_path.exists():
+        return {
+            "available": False,
+            "reason": f"prediction payload 不存在：{prediction_payload_path}",
+        }
+
+    payload = read_json(prediction_payload_path)
+    raw_sessions = payload.get("sessions") or []
+    split_name = str(payload.get("split_name") or "test")
+    target_names = list(
+        current_metrics_payload.get("target_names")
+        or (raw_sessions[0].get("target_names") if raw_sessions else [])
+        or []
+    )
+    target_space = str(current_metrics_payload.get("target_space") or "marker_coordinate")
+    marker_names = marker_names_from_kin(target_names) if target_space == "marker_coordinate" else []
+    sessions_payload: list[dict[str, Any]] = []
+
+    for row in raw_sessions:
+        time_s = np.asarray(row.get("time_s") or [], dtype=np.float32)
+        y_true = np.asarray(row.get("y_true") or [], dtype=np.float32)
+        y_pred = np.asarray(row.get("y_pred") or [], dtype=np.float32)
+        if time_s.size == 0 or y_true.size == 0 or y_pred.size == 0:
+            continue
+        frame_count = min(time_s.shape[0], y_true.shape[0], y_pred.shape[0])
+        if frame_count <= 0:
+            continue
+        time_s = time_s[:frame_count]
+        y_true = y_true[:frame_count]
+        y_pred = y_pred[:frame_count]
+        if frame_count > MAX_PREVIEW_FRAMES_PER_SESSION:
+            preview_positions = np.linspace(
+                0,
+                frame_count - 1,
+                MAX_PREVIEW_FRAMES_PER_SESSION,
+                dtype=np.int64,
+            )
+            time_s = time_s[preview_positions]
+            y_true = y_true[preview_positions]
+            y_pred = y_pred[preview_positions]
+
+        session_target_names = list(row.get("target_names") or target_names)
+        sessions_payload.append(
+            {
+                "session_id": str(row.get("session_id") or "-"),
+                "split": split_name,
+                "time_s": round_array(time_s, digits=3),
+                "kin_names": session_target_names,
+                "y_true": round_array(y_true, digits=3),
+                "y_pred": round_array(y_pred, digits=3),
+            }
+        )
+
+    if not sessions_payload:
+        return {
+            "available": False,
+            "reason": f"prediction payload 里没有可展示的 session：{prediction_payload_path}",
+        }
+
+    return {
+        "available": True,
+        "created_at": datetime.now().isoformat(),
+        "dataset_name": str(current_metrics_payload.get("dataset_name") or payload.get("dataset_name") or "-"),
+        "checkpoint_path": None,
+        "prediction_payload_path": str(prediction_payload_path),
+        "experiment_track": current_metrics_payload.get("experiment_track"),
+        "model_family": str(payload.get("model_family") or current_metrics_payload.get("model_family") or "-"),
+        "device": "precomputed_payload",
+        "window_seconds": current_metrics_payload.get("window_seconds"),
+        "window_samples": current_metrics_payload.get("window_samples"),
+        "stride_samples": current_metrics_payload.get("stride_samples"),
+        "pred_horizon_samples": current_metrics_payload.get("pred_horizon_samples"),
+        "signal_preprocess": current_metrics_payload.get("signal_preprocess"),
+        "feature_families": str(payload.get("feature_family") or "").split("+") if payload.get("feature_family") else [],
+        "feature_reducers": list(payload.get("feature_reducers") or current_metrics_payload.get("feature_reducers") or []),
+        "artifact_probe": current_metrics_payload.get("artifact_probe", "none"),
+        "target_mode": current_metrics_payload.get("target_mode"),
+        "target_space": target_space,
+        "target_names": target_names,
+        "target_dim_count": len(target_names),
+        "relative_origin_marker": current_metrics_payload.get("relative_origin_marker"),
+        "default_split": split_name,
+        "default_marker": marker_names[0] if marker_names else (target_names[0] if target_names else None),
+        "marker_names": marker_names,
+        "axis_semantics": {"x": "前后", "y": "左右", "z": "上下"},
+        "plane_mode": "lab_axis_approx",
+        "splits": {
+            split_name: {
+                "session_ids": [row["session_id"] for row in sessions_payload],
+                "sessions": sessions_payload,
+            }
+        },
     }
 
 

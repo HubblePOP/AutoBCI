@@ -17,7 +17,14 @@ BANDPOWER_BANK: tuple[tuple[str, float, float], ...] = (
     ("high_gamma", 70.0, 150.0),
 )
 SUPPORTED_SIGNAL_PREPROCESS = {"legacy_raw", "car_notch_bandpass"}
-SUPPORTED_FEATURE_FAMILIES = {"simple_stats", "lmp", "hg_power", "bandpower_bank"}
+SUPPORTED_FEATURE_FAMILIES = {
+    "simple_stats",
+    "lmp",
+    "hg_power",
+    "bandpower_bank",
+    "phase_state",
+    "dmd_sdm",
+}
 POWER_EPS = 1e-8
 
 
@@ -129,6 +136,46 @@ def _binned_log_power(signal_tc: np.ndarray, *, bin_samples: int) -> np.ndarray:
     return np.log(power + POWER_EPS).astype(np.float32)
 
 
+def _binned_phase_state_features(signal_tc: np.ndarray, *, bin_samples: int) -> np.ndarray:
+    trimmed, usable = _trim_full_bins(signal_tc, bin_samples=bin_samples)
+    n_channels = trimmed.shape[0]
+    n_bins = usable // bin_samples
+    analytic = signal.hilbert(trimmed, axis=1)
+    analytic_norm = np.maximum(np.abs(analytic), POWER_EPS)
+    unit_phase = analytic / analytic_norm
+    binned_phase = unit_phase.reshape(n_channels, n_bins, bin_samples)
+    phase_cos = np.mean(np.real(binned_phase), axis=2, dtype=np.float32)
+    phase_sin = np.mean(np.imag(binned_phase), axis=2, dtype=np.float32)
+    phase_norm = np.sqrt(np.square(phase_cos) + np.square(phase_sin) + POWER_EPS, dtype=np.float32)
+    phase_cos = (phase_cos / phase_norm).astype(np.float32)
+    phase_sin = (phase_sin / phase_norm).astype(np.float32)
+    return np.concatenate([phase_cos, phase_sin], axis=0).astype(np.float32)
+
+
+def _binned_sdm_mode_features(signal_tc: np.ndarray, *, bin_samples: int, n_modes: int = 2) -> np.ndarray:
+    trimmed, usable = _trim_full_bins(signal_tc, bin_samples=bin_samples)
+    n_channels = trimmed.shape[0]
+    n_bins = usable // bin_samples
+    binned = trimmed.reshape(n_channels, n_bins, bin_samples)
+    modes = np.zeros((n_channels * n_modes, n_bins), dtype=np.float32)
+    for bin_idx in range(n_bins):
+        matrix = np.asarray(binned[:, bin_idx, :], dtype=np.float32)
+        matrix = matrix - np.mean(matrix, axis=1, keepdims=True, dtype=np.float32)
+        try:
+            u, s, _ = np.linalg.svd(matrix, full_matrices=False)
+        except np.linalg.LinAlgError:
+            continue
+        usable_modes = min(n_modes, u.shape[1], s.shape[0])
+        for mode_idx in range(usable_modes):
+            loading = np.asarray(u[:, mode_idx], dtype=np.float32)
+            if float(np.sum(loading)) < 0.0:
+                loading = -loading
+            modes[mode_idx * n_channels:(mode_idx + 1) * n_channels, bin_idx] = (
+                loading * np.float32(s[mode_idx])
+            )
+    return modes
+
+
 def build_feature_sequence(
     *,
     ecog_uV: np.ndarray,
@@ -172,6 +219,19 @@ def build_feature_sequence(
                 bank_names.extend(f"{channel}:{label}" for channel in channel_names)
             piece = np.concatenate(bank_outputs, axis=0).astype(np.float32)
             piece_names = bank_names
+        elif family == "phase_state":
+            phase_signal = _bandpass_filter(base_signal, fs_hz=fs_hz, low_hz=0.5, high_hz=4.0)
+            piece = _binned_phase_state_features(phase_signal, bin_samples=bin_samples)
+            piece_names = (
+                [f"{channel}:phase_cos" for channel in channel_names]
+                + [f"{channel}:phase_sin" for channel in channel_names]
+            )
+        elif family == "dmd_sdm":
+            piece = _binned_sdm_mode_features(base_signal, bin_samples=bin_samples, n_modes=2)
+            piece_names = (
+                [f"{channel}:sdm_mode1" for channel in channel_names]
+                + [f"{channel}:sdm_mode2" for channel in channel_names]
+            )
         else:
             raise ValueError(f"Unsupported feature family: {family}")
 

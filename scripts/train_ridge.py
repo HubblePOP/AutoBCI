@@ -34,6 +34,11 @@ from bci_autoresearch.features import (
     parse_feature_families,
     slice_feature_window,
 )
+from bci_autoresearch.utils.train_script_gates import (
+    normalize_artifact_probe,
+    validate_bin_size_ms,
+    write_preflight_payload,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,12 +62,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--feature-family", type=str, default="simple_stats")
     parser.add_argument("--artifact-probe", type=str, default="none")
     parser.add_argument("--artifact-shift-seconds", type=float, default=10.0)
+    parser.add_argument("--preflight-only", action="store_true")
     return parser.parse_args()
 
 
 def parse_reducers(raw_value: str) -> tuple[str, ...]:
     reducers = tuple(part.strip() for part in raw_value.split(",") if part.strip())
     return normalize_reducers(reducers)
+
+
+def _write_preflight(path: Path, *, args: argparse.Namespace, target_names: list[str]) -> None:
+    write_preflight_payload(
+        path,
+        script_name="train_ridge.py",
+        dataset_config=args.dataset_config,
+        target_names=target_names,
+        extra_fields={
+            "model_family": "ridge",
+            "feature_family": args.feature_family,
+        },
+    )
 
 
 def summarize_session_qc(
@@ -345,6 +364,19 @@ def main() -> None:
     )
     target_dim_indices = target_spec.dim_indices
     target_kin_names = target_spec.dim_names
+    out_path = Path(args.output_json)
+    feature_bin_samples = validate_bin_size_ms(
+        fs_hz=reference_info.fs_ecog,
+        bin_ms=args.feature_bin_ms,
+        flag_name="--feature-bin-ms",
+    )
+    artifact_probe = normalize_artifact_probe(args.artifact_probe)
+    if args.preflight_only:
+        parse_reducers(args.feature_reducers)
+        normalize_signal_preprocess(args.signal_preprocess)
+        parse_feature_families(args.feature_family)
+        _write_preflight(out_path, args=args, target_names=target_kin_names)
+        return
 
     window_seconds = (
         float(dataset.defaults.get("window_seconds", 3.0))
@@ -363,17 +395,9 @@ def main() -> None:
     )
     max_lag_ms = float(dataset.lag_diagnostics.get("max_lag_ms", 1000.0))
     window_samples = int(round(window_seconds * reference_info.fs_ecog))
-    feature_bin_samples = int(round(reference_info.fs_ecog * args.feature_bin_ms / 1000.0))
-    if feature_bin_samples <= 0:
-        raise ValueError("--feature-bin-ms is too small.")
     feature_reducers = parse_reducers(args.feature_reducers)
     signal_preprocess = normalize_signal_preprocess(args.signal_preprocess)
     feature_families = parse_feature_families(args.feature_family)
-    artifact_probe = str(args.artifact_probe).strip().lower()
-    if artifact_probe not in {"none", "session_center", "target_shuffle", "target_shift"}:
-        raise ValueError(
-            "--artifact-probe must be one of none, session_center, target_shuffle, target_shift."
-        )
 
     train_session_ids = resolve_split_session_ids(dataset, "train")
     val_session_ids = resolve_split_session_ids(dataset, "val")
@@ -583,7 +607,6 @@ def main() -> None:
     if test_metrics is not None:
         metrics["test_metrics"] = test_metrics
 
-    out_path = Path(args.output_json)
     print(json.dumps(metrics, indent=2, ensure_ascii=False))
     train_shared.save_metrics(metrics, out_path)
 

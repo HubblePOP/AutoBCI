@@ -10,10 +10,13 @@ test("launchCampaign strips launch env before invoking the campaign entrypoint",
     stripEnvironment: () => {
       events.push("strip");
     },
+    compileQueue: async () => {
+      events.push("compile");
+    },
     runCampaign: async () => {
       events.push("run");
     },
   });
 
-  assert.deepEqual(events, ["strip", "run"]);
+  assert.deepEqual(events, ["strip", "compile", "run"]);
 });

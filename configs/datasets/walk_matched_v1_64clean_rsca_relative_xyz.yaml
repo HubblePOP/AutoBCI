@@ -1,0 +1,176 @@
+dataset_name: walk_matched_v1_64clean_rsca_relative_xyz
+cache_subdir: data/cache_walk_matched_v1_64clean
+
+defaults:
+  window_seconds: 3.0
+  stride_samples: 400
+  pred_horizon_samples: 0
+
+lag_diagnostics:
+  max_lag_ms: 1000.0
+
+experiment:
+  track: auxiliary_directional_benchmark
+  description: 右侧骨架 marker 轨迹减去同一时刻 RSCA 的相对坐标 benchmark
+
+monitor:
+  default_render_mode: skeleton
+  plane_mode: lab_axis_approx
+  axis_semantics:
+    x: 前后
+    y: 左右
+    z: 上下
+  target_space: marker_coordinate
+  target_summary: 右侧骨架 marker 相对 RSCA 的 xyz 轨迹（去掉 RSCA 自身）
+  skeleton_edges:
+    - [RPEL, RHIP, RKNE, RANK, RMTP, RHTOE]
+    - [RSCA, RSHO, RELB, RWRI, RMCP, RFTOE]
+    - [RPEL, RSCA]
+
+vicon:
+  target_mode: markers_xyz
+  target_axes: xyz
+  relative_origin_marker: RSCA
+  time_column: null
+  frame_column: null
+  fps: null
+  joints: null
+
+sessions:
+  - session_id: walk_20240717_01
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240717/walk_20km_01_240717_122959
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240717/walk_20km_01.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240717_03
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240717/walk_20km_03_240717_124621
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240717/walk_20km_03.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240717_04
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240717/walk_20km_04_240717_140711
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240717/walk_20km_04.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240717_05
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240717/walk_20km_05_240717_141746
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240717/walk_20km_05.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240717_06
+    active_bank: B
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240717/walk_20km_06_240717_142819
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240717/walk_20km_06.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240717_07
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240717/walk_20km_07_240717_145644
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240717/walk_20km_07.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240717_08
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240717/walk_20km_08_240717_150822
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240717/walk_20km_08.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240717_09
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240717/walk_20km_09_240717_151717
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240717/walk_20km_09.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240717_10
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240717/walk_20km_10_240717_154739
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240717/walk_20km_10.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240717_12
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240717/walk_20km_12_240717_162256
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240717/walk_20km_12.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240717_14
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240717/walk_20km_14_240717_163921
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240717/walk_20km_14.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240717_16
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240717/walk_20km_16_240717_170214
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240717/walk_20km_16.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240719_01
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240719/walk_20km_01_240719_112137
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240719/walk_20km_01.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240719_02
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240719/walk_20km_02_240719_113210
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240719/walk_20km_02.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240719_03
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240719/walk_20km_03_240719_114242
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240719/walk_20km_03.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240719_04
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240719/walk_20km_04_240719_120850
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240719/walk_20km_04.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240719_05
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240719/walk_20km_05_240719_121937
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240719/walk_20km_05.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240719_06
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240719/walk_20km_06_240719_133512
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240719/walk_20km_06.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240719_07
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240719/walk_20km_07_240719_134835
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240719/walk_20km_07.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240719_08
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240719/walk_20km_08_240719_135856
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240719/walk_20km_08.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240719_09
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240719/walk_20km_09_240719_144241
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240719/walk_20km_09.xlsx
+    alignment: {lag_seconds: 0.0}
+  - session_id: walk_20240719_10
+    active_bank: A
+    intan_rhd: /Volumes/Elements/bci/脑电/data20240719/walk_20km_10_240719_150148
+    vicon_csv: /Volumes/Elements/bci/处理后的关节数据/20240719/walk_20km_10.xlsx
+    alignment: {lag_seconds: 0.0}
+
+splits:
+  train:
+    - walk_20240717_01
+    - walk_20240717_03
+    - walk_20240717_04
+    - walk_20240717_05
+    - walk_20240717_06
+    - walk_20240717_07
+    - walk_20240717_08
+    - walk_20240717_09
+    - walk_20240717_10
+    - walk_20240717_14
+    - walk_20240719_01
+    - walk_20240719_02
+    - walk_20240719_03
+    - walk_20240719_04
+    - walk_20240719_05
+    - walk_20240719_06
+    - walk_20240719_08
+    - walk_20240719_09
+  val:
+    - walk_20240717_12
+    - walk_20240719_07
+  test:
+    - walk_20240717_16
+    - walk_20240719_10

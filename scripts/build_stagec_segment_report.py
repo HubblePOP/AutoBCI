@@ -19,6 +19,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import train_lstm as train_shared
+import train_feature_lstm as feature_shared
 from bci_autoresearch.data.runtime_splits import (
     apply_signal_artifact_probe,
     apply_target_artifact_probe,
@@ -35,7 +36,6 @@ from bci_autoresearch.eval.metrics import (
     rmse_per_dim,
 )
 from bci_autoresearch.features import build_feature_sequence, slice_feature_window
-from bci_autoresearch.models.lstm_regressor import LSTMRegressor
 from bci_autoresearch.utils.segment_diagnostics import select_hard_segment
 
 
@@ -145,9 +145,9 @@ def _feature_rows_for_session(
     return np.stack(x_rows, axis=0).astype(np.float32), target_matrix[target_indices].astype(np.float32)
 
 
-def _predict_feature_lstm(
+def _predict_feature_sequence(
     *,
-    model: LSTMRegressor,
+    model,
     feature_windows: np.ndarray,
     checkpoint: dict[str, Any],
     batch_size: int,
@@ -250,13 +250,14 @@ def predict_sessions_for_result(
     sessions_payload: list[dict[str, Any]] = []
 
     model = None
-    if model_family == "feature_lstm":
-        model = LSTMRegressor(
+    if model_family in feature_shared.FEATURE_SEQUENCE_MODEL_FAMILIES:
+        model = feature_shared.build_feature_sequence_model(
+            model_family=model_family,
             n_channels=int(len(np.asarray(checkpoint["x_mean"], dtype=np.float32))),
             n_outputs=len(target_names),
             hidden_size=int(checkpoint["hidden_size"]),
             num_layers=int(checkpoint["num_layers"]),
-            dropout=0.1,
+            dropout=float(checkpoint.get("dropout", 0.1)),
         )
         model.load_state_dict(checkpoint["model_state"])
 
@@ -282,8 +283,8 @@ def predict_sessions_for_result(
         )
         if feature_windows.size == 0:
             continue
-        if model_family == "feature_lstm":
-            y_pred = _predict_feature_lstm(
+        if model_family in feature_shared.FEATURE_SEQUENCE_MODEL_FAMILIES:
+            y_pred = _predict_feature_sequence(
                 model=model,
                 feature_windows=feature_windows,
                 checkpoint=checkpoint,

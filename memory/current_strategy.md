@@ -1,89 +1,90 @@
 # 当前策略
 
-> 对外主文稿看：`reports/2026-04-07/experiment_status.md`
-> 这份文件只保留当前主线和当前结论。
+这份文件只保留**给人读的当前执行摘要**。
 
-## 当前状态
+注意：
 
-- `frozen_baseline`：`stageC_ridge`
-- `accepted_stable_best`：`stageC_xgboost_256`
-- `accepted_best`：兼容字段，当前等于 `stageC_xgboost_256`
-- `leading_unverified_candidate`：当前为空
+- 这份文件不是控制面真源。
+- 当前 topic 队列、decision packet、retrieval packet、judgment update、运行态状态，以 `artifacts/monitor/` 和 AutoBci control plane 为准。
+- 如果摘要和运行态冲突，优先相信运行态 JSON 与 control plane 输出。
+- 当前结构说明请先读：
+  [2026-04-12_autobci_control_plane_current_state.md](/Users/mac/Code/AutoBci/docs/2026-04-12_autobci_control_plane_current_state.md)
 
-## 主线定义
+长期研究判断与执行护栏，请再读：
+[hermes_research_tree.md](/Users/mac/Code/AutoBci/memory/hermes_research_tree.md)
 
-- 数据集：`walk_matched_v1_64clean_joints`
-- 目标：`joints_sheet`
-- 目标空间：`joint_angle`
-- 输出：`Hip, Kne, Ank, Mtp, Sho, Elb, Wri, Mcp`
-- session 总数：`22`
-  - `2024-07-17`：`12` 组，`01, 03, 04, 05, 06, 07, 08, 09, 10, 12, 14, 16`
-  - `2024-07-19`：`10` 组，`01, 02, 03, 04, 05, 06, 07, 08, 09, 10`
-- 总时长：约 `12352.4` 秒，也就是约 `205.9` 分钟
-- split：`18 train / 2 val / 2 test`
-  - `val`：`walk_20240717_12`，`walk_20240719_07`
-  - `test`：`walk_20240717_16`，`walk_20240719_10`
-- 输入：每条 session 只保留有效半区的 `64` 通道
-- 采样率：
-  - `fs_ecog = 2000 Hz`
-  - `fs_vicon = 200 Hz`
-- 预处理：`car_notch_bandpass`
-- 特征：`lmp + hg_power`
-- reducers：`mean`
-- 时间设置：
-  - `window_seconds = 3.0`
-  - `stride_samples = 400`
-  - `feature_bin_ms = 100.0`
-- 主指标：`val mean_pearson_r_zero_lag_macro`
+---
 
-## 三层结果
+## 当前主问题
 
-- `frozen_baseline = stageC_ridge`
-  - `val r = 0.3180`
-  - `test r = 0.2322`
-  - `test MAE = 9.3294°`
-  - `test RMSE = 11.8382°`
+- 当前关键问题：
+  - 今晚已经切到**同试次纯脑电冲刺**，当前最重要的不是继续收尾，而是回答“哪条纯脑电路线最有希望把同试次平均相关系数继续抬高”。
+- 当前控制面判断：
+  - 继续优先纯脑电突破，先把当前主线和 phase 条件路线留在推荐队列最前。
 
-- `accepted_stable_best = stageC_xgboost_256`
-  - packet 中位数：`val r = 0.4329`
-  - packet 中位数：`test r = 0.3712`
-  - packet 中位数：`test MAE = 8.5563°`
-  - packet 中位数：`test RMSE = 10.9990°`
-  - 当前 best seed：`stageC_xgboost_256_seed2`
-  - best seed 结果：`val r = 0.4339`，`test r = 0.3711`
+---
 
-- `feature-LSTM` 现在是已复验完成的上一档稳定候选
-  - packet 中位数：`val r = 0.4227`
-  - packet 中位数：`test r = 0.3483`
-  - packet 中位数：`test MAE = 8.9200°`
-  - packet 中位数：`test RMSE = 11.4741°`
+## 当前 mission / campaign 摘要
 
-## 上限线
+- 当前 mission：`overnight-2026-04-11-purebrain`
+- 当前 campaign：`moonshot-今晚-same-session-pure-brain-upper-bound-0-6-moonshot-广撒纯脑电家族做-ult`
+- 当前阶段：`formal_eval`
+- 当前活动轨：
+  - `moonshot_upper_bound_feature_state_space_lite_lmp_hg_phase_state_scout`
+- 当前 agent 状态：
+  - `queued`
 
-- `within_session_upper_bound` 单独记账，不写回主线
-- 它用的是主线 `train` 里的 `18` 条 session，在每条 session 内部再按时间切成 `70% / 15% / 15%`
-- 当前 family 对照：
-  - `upper_bound ridge`：`test r = 0.2953`
-  - `upper_bound feature-LSTM`：`test r = 0.4745`
-  - `upper_bound XGBoost`：`test r = 0.4723`
+当前控制面已经能稳定读写：
 
-## 当前重点
+- `topics.inbox.json`
+- `retrieval_packets/`
+- `decision_packets/`
+- `judgment_updates.jsonl`
+- `hypothesis_log.jsonl`
 
-- 主线模型顺序：
-  - `stageC_xgboost_256_seed_summary`
-  - `stageC_feature_lstm_seed_summary`
-  - `stageC_ridge`
-- `Question E` 当前先看 `Kne / Wri / Mcp`
-- 远端阅读入口：`reports/2026-04-07/experiment_status.md`
+也就是说，当前“思考层”已经在后端存在；它不是还停在纯文档和纯总结阶段。
 
-## 当前限制
+---
 
-- 当前 `test` 已被多次查看，只当开发参考
-- 跨 session 仍然比同 session 难很多
-- 当前主线的主要质量问题还是压幅，尤其是 `Kne / Wri / Mcp`
+## 当前最值得关注的方向
 
-## 代码仓库
+当前推荐队列头部是：
 
-- GitHub：`infoechoes/AutoBci`
-- 本地路径：`/Users/mac/Code/AutoBci`
-- 远端：`https://github.com/infoechoes/AutoBci.git`
+1. `feature_gru_mainline`
+2. `feature_tcn_mainline`
+3. `phase_conditioned_feature_lstm`
+
+当前正在一起看的纯脑电候选家族包括：
+
+- `feature_lstm`
+- `feature_gru`
+- `feature_tcn`
+- `feature_cnn_lstm`
+- `feature_state_space_lite`
+- `feature_conformer_lite`
+
+当前推荐的正式比较对象是：
+
+- `feature_gru_mainline`
+- `feature_tcn_mainline`
+
+当前策略含义固定为：
+
+- 主预算继续优先给纯脑电家族
+- 控制线和解释线继续保留，但不再冒充主线突破
+- 新方向必须先进入 `Topic Inbox`，再变成推荐队列和真实 run
+
+---
+
+## 当前风险与护栏
+
+- 8878 现有页面还是旧 dashboard 壳。
+  - 后端 thinking 层已经存在
+  - 但 `Topic Inbox / 当前关键问题 / latest decision / latest judgment` 还没有被画到页面上
+- `artifacts/monitor/` 是当前运行态唯一真源。
+  - `current_strategy.md` 和 `hermes_research_tree.md` 都只负责解释，不负责记完整运行态明细
+- Hermes 现在是客户端 / 入口，不再是 topic / queue / packet 的主脑。
+- 当前如果需要判断“这轮有没有真的推进”，默认先看：
+  - 有没有新的 topic 状态变化
+  - 有没有新的 decision / judgment 产物
+  - 有没有新的真实 `run_id`

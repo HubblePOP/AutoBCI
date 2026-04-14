@@ -1,0 +1,27 @@
+{
+  "review_cadence": "daily",
+  "tracks": [
+    {
+      "track_id": "gait_phase_bootstrap",
+      "topic_id": "gait_phase_label_engineering",
+      "runner_family": "gait_phase_rule",
+      "track_goal": "从零开始推进步态阶段标签工程，先固定参考标签、例外分类和评分脚本，再比较多种运动学切分规则，优先提升参考标签可用率。",
+      "promotion_target": "gait_phase_reference_freeze_gate",
+      "internet_research_enabled": true,
+      "smoke_command": ".venv/bin/python scripts/run_gait_phase_label_engineering.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --candidate-path benchmarks/carnese/tasks/gait_phase_v1/candidate_method.py",
+      "formal_command": ".venv/bin/python scripts/run_gait_phase_label_engineering.py --dataset-config configs/datasets/gait_phase_clean64.yaml --candidate-path benchmarks/carnese/tasks/gait_phase_v1/candidate_method.py",
+      "allowed_change_scope": [
+        "benchmarks/carnese/tasks/gait_phase_v1",
+        "scripts",
+        "src/bci_autoresearch/eval"
+      ],
+      "algorithm_family": "gait_phase_rule",
+      "algorithm_label": "步态规则",
+      "method_variant_label": "步态标签工程",
+      "input_mode_label": "只用运动学标记",
+      "series_class": "structure",
+      "promotable": false,
+      "validated": false
+    }
+  ]
+}

@@ -236,11 +236,16 @@ def normalize_target_axes(raw_axes: str) -> tuple[str, ...]:
 def select_target_dims(
     kin_names: list[str],
     target_axes: tuple[str, ...],
+    *,
+    exclude_marker: str | None = None,
 ) -> tuple[np.ndarray, list[str]]:
     selected_indices: list[int] = []
     selected_names: list[str] = []
     for idx, name in enumerate(kin_names):
-        suffix = name.rsplit("_", 1)[-1].lower() if "_" in name else ""
+        marker, axis = split_kin_name(name)
+        suffix = axis or ""
+        if exclude_marker is not None and marker == exclude_marker:
+            continue
         if suffix in target_axes:
             selected_indices.append(idx)
             selected_names.append(name)
@@ -296,7 +301,11 @@ def resolve_target_spec(
             dim_names=list(kin_names),
         )
 
-    dim_indices, dim_names = select_target_dims(kin_names, target_axes)
+    dim_indices, dim_names = select_target_dims(
+        kin_names,
+        target_axes,
+        exclude_marker=relative_origin_marker,
+    )
     return TargetSpec(
         mode=effective_target_mode(
             raw_target_mode=mode,

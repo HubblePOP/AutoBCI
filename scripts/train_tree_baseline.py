@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -33,6 +34,11 @@ from bci_autoresearch.features import (
     parse_feature_families,
     slice_feature_window,
 )
+from bci_autoresearch.utils.train_script_gates import (
+    normalize_artifact_probe,
+    validate_bin_size_ms,
+    write_preflight_payload,
+)
 
 
 def evaluation_mode_from_track(track: str | None) -> str:
@@ -61,10 +67,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--feature-family", type=str, default="lmp+hg_power")
     parser.add_argument("--artifact-probe", type=str, default="none")
     parser.add_argument("--artifact-shift-seconds", type=float, default=10.0)
-    parser.add_argument("--model-family", choices=["random_forest", "xgboost"], required=True)
+    parser.add_argument("--model-family", choices=["random_forest", "extra_trees", "xgboost"], required=True)
     parser.add_argument("--rf-n-estimators", type=int, default=500)
     parser.add_argument("--xgb-n-estimators", type=int, default=600)
+    parser.add_argument("--xgb-max-depth", type=int, default=7)
+    parser.add_argument("--xgb-reg-lambda", type=float, default=0.75)
+    parser.add_argument("--xgb-output-parallelism", type=int, default=None)
+    parser.add_argument("--xgb-n-jobs", type=int, default=1)
+    parser.add_argument("--preflight-only", action="store_true")
     return parser.parse_args()
+
+
+def build_prediction_payload_path(out_path: Path) -> Path:
+    return out_path.with_name(f"{out_path.stem}_prediction_payload.json")
+
+
+def _write_preflight(path: Path, *, args: argparse.Namespace, target_names: list[str]) -> None:
+    write_preflight_payload(
+        path,
+        script_name="train_tree_baseline.py",
+        dataset_config=args.dataset_config,
+        target_names=target_names,
+        extra_fields={
+            "model_family": args.model_family,
+            "feature_family": args.feature_family,
+        },
+    )
 
 
 def build_estimator(args: argparse.Namespace):
@@ -77,19 +105,33 @@ def build_estimator(args: argparse.Namespace):
             n_jobs=-1,
             random_state=args.seed,
         )
+    if args.model_family == "extra_trees":
+        from sklearn.ensemble import ExtraTreesRegressor
+
+        return ExtraTreesRegressor(
+            n_estimators=args.rf_n_estimators,
+            min_samples_leaf=2,
+            n_jobs=-1,
+            random_state=args.seed,
+        )
 
     from bci_autoresearch.models.multioutput_xgb import MultiOutputXGBRegressor
 
     return MultiOutputXGBRegressor(
         n_estimators=args.xgb_n_estimators,
-        max_depth=6,
+        max_depth=args.xgb_max_depth,
         learning_rate=0.05,
         subsample=0.8,
         colsample_bytree=0.8,
-        reg_lambda=1.0,
+        reg_lambda=args.xgb_reg_lambda,
         objective="reg:squarederror",
         tree_method="hist",
-        n_jobs=1,
+        n_jobs=max(1, int(args.xgb_n_jobs)),
+        output_parallelism=(
+            min(8, os.cpu_count() or 1)
+            if args.xgb_output_parallelism is None
+            else max(1, int(args.xgb_output_parallelism))
+        ),
         random_state=args.seed,
     )
 
@@ -318,22 +360,28 @@ def main() -> None:
     )
     target_dim_indices = target_spec.dim_indices
     target_kin_names = target_spec.dim_names
+    out_path = Path(args.output_json)
+    feature_bin_samples = validate_bin_size_ms(
+        fs_hz=reference_info.fs_ecog,
+        bin_ms=args.feature_bin_ms,
+        flag_name="--feature-bin-ms",
+    )
+    artifact_probe = normalize_artifact_probe(args.artifact_probe)
+    if args.preflight_only:
+        ridge_shared.parse_reducers(args.feature_reducers)
+        normalize_signal_preprocess(args.signal_preprocess)
+        parse_feature_families(args.feature_family)
+        _write_preflight(out_path, args=args, target_names=target_kin_names)
+        return
 
     window_seconds = float(dataset.defaults.get("window_seconds", 3.0)) if args.window_seconds is None else args.window_seconds
     stride_samples = int(dataset.defaults.get("stride_samples", 400)) if args.stride_samples is None else args.stride_samples
     pred_horizon_samples = int(dataset.defaults.get("pred_horizon_samples", 0)) if args.pred_horizon_samples is None else args.pred_horizon_samples
     max_lag_ms = float(dataset.lag_diagnostics.get("max_lag_ms", 1000.0))
     window_samples = int(round(window_seconds * reference_info.fs_ecog))
-    feature_bin_samples = int(round(reference_info.fs_ecog * args.feature_bin_ms / 1000.0))
-    if feature_bin_samples <= 0:
-        raise ValueError("--feature-bin-ms is too small.")
-
     feature_reducers = ridge_shared.parse_reducers(args.feature_reducers)
     signal_preprocess = normalize_signal_preprocess(args.signal_preprocess)
     feature_families = parse_feature_families(args.feature_family)
-    artifact_probe = str(args.artifact_probe).strip().lower()
-    if artifact_probe not in {"none", "session_center", "target_shuffle", "target_shift"}:
-        raise ValueError("--artifact-probe must be one of none, session_center, target_shuffle, target_shift.")
 
     train_session_ids = resolve_split_session_ids(dataset, "train")
     val_session_ids = resolve_split_session_ids(dataset, "val")
@@ -475,7 +523,6 @@ def main() -> None:
     train_shared.save_checkpoint(checkpoint, best_checkpoint_path)
     train_shared.save_checkpoint(checkpoint, last_checkpoint_path)
 
-    out_path = Path(args.output_json)
     experiment_track = experiment_track_name(dataset)
     metrics: dict[str, object] = {
         "run_id": out_path.stem,
@@ -532,6 +579,14 @@ def main() -> None:
             "artifact_probe": artifact_probe,
             "artifact_shift_seconds": args.artifact_shift_seconds,
             "feature_dim": int(x_train.shape[1]),
+            "rf_n_estimators": args.rf_n_estimators if args.model_family in {"random_forest", "extra_trees"} else None,
+            "xgb_n_estimators": args.xgb_n_estimators if args.model_family == "xgboost" else None,
+            "xgb_max_depth": args.xgb_max_depth if args.model_family == "xgboost" else None,
+            "xgb_reg_lambda": args.xgb_reg_lambda if args.model_family == "xgboost" else None,
+            "xgb_n_jobs": args.xgb_n_jobs if args.model_family == "xgboost" else None,
+            "xgb_output_parallelism": (
+                args.xgb_output_parallelism if args.model_family == "xgboost" else None
+            ),
         },
         "val_metrics": val_metrics,
         "qc": {
@@ -545,9 +600,19 @@ def main() -> None:
                 "test": ridge_shared.build_gain_rankings(test_metrics) if test_metrics is not None else [],
             },
         },
+        "model_params": {
+            "rf_n_estimators": args.rf_n_estimators if args.model_family in {"random_forest", "extra_trees"} else None,
+            "xgb_n_estimators": args.xgb_n_estimators if args.model_family == "xgboost" else None,
+            "xgb_max_depth": args.xgb_max_depth if args.model_family == "xgboost" else None,
+            "xgb_reg_lambda": args.xgb_reg_lambda if args.model_family == "xgboost" else None,
+            "xgb_n_jobs": args.xgb_n_jobs if args.model_family == "xgboost" else None,
+            "xgb_output_parallelism": (
+                args.xgb_output_parallelism if args.model_family == "xgboost" else None
+            ),
+        },
     }
     if test_metrics is not None:
-        prediction_payload_path = out_path.with_name(f"{out_path.stem}_prediction_payload.json")
+        prediction_payload_path = build_prediction_payload_path(out_path)
         prediction_payload = {
             "run_id": out_path.stem,
             "model_family": args.model_family,

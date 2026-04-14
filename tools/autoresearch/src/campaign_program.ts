@@ -16,6 +16,8 @@ export interface CampaignTrack {
   runnerFamily?: string;
   expectedMemoryClass?: "high" | "low" | "service";
   internetResearchEnabled?: boolean;
+  validated?: boolean;
+  skipCodexEdit?: boolean;
   trackGoal: string;
   promotionTarget: string;
   smokeCommand: string;
@@ -440,6 +442,10 @@ function normalizeTrack(
   const internetResearchEnabled = typeof record.internet_research_enabled === "boolean"
     ? record.internet_research_enabled
     : false;
+  const validated = typeof record.validated === "boolean" ? record.validated : false;
+  const skipCodexEdit = typeof record.skip_codex_edit === "boolean"
+    ? record.skip_codex_edit
+    : validated;
   const trackGoal = readRequiredString(record.track_goal, `tracks[${index}].track_goal`);
   const promotionTarget = readRequiredString(record.promotion_target, `tracks[${index}].promotion_target`);
   const smokeCommand = readRequiredString(record.smoke_command, `tracks[${index}].smoke_command`);
@@ -452,6 +458,8 @@ function normalizeTrack(
     runnerFamily,
     expectedMemoryClass,
     internetResearchEnabled,
+    validated,
+    skipCodexEdit,
     trackGoal,
     promotionTarget,
     smokeCommand,
@@ -484,7 +492,15 @@ function normalizeExpectedMemoryClass(
   }
 
   const normalizedRunner = (runnerFamily || "").toLowerCase();
-  if (normalizedRunner === "feature_lstm" || normalizedRunner === "raw_lstm") {
+  if (
+    normalizedRunner === "feature_lstm"
+    || normalizedRunner === "feature_gru"
+    || normalizedRunner === "feature_tcn"
+    || normalizedRunner === "feature_cnn_lstm"
+    || normalizedRunner === "feature_state_space_lite"
+    || normalizedRunner === "feature_conformer_lite"
+    || normalizedRunner === "raw_lstm"
+  ) {
     return "high";
   }
 

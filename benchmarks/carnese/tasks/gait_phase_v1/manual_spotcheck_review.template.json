@@ -1,0 +1,12 @@
+{
+  "review_set_name": "gait_phase_manual_spotcheck_v1",
+  "reviewed_by": "",
+  "reviewed_at": "",
+  "session_reviews": [
+    {
+      "session_id": "walk_20240717_01",
+      "status": "pending",
+      "notes": ""
+    }
+  ]
+}

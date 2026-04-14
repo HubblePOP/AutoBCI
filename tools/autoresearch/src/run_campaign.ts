@@ -17,6 +17,8 @@ import {
 import {
   applyRuntimeCampaignOverlay,
   loadRuntimeCampaignOverlay,
+  type RuntimeCampaignTrack,
+  type RuntimeTrackOrigin,
 } from "./runtime_campaign.js";
 import { sanitizeLaunchEnvironment } from "./launch_support.js";
 import { registerManagedProcess, unregisterManagedProcess } from "./process_registry.js";
@@ -104,6 +106,16 @@ interface CandidateSnapshot {
   decision: string;
   next_step: string;
   artifacts: string[];
+  tool_usage_summary: ThreadItemUsageSummary | null;
+  thinking_heartbeat_at: string;
+  last_retrieval_at: string;
+  last_decision_at: string;
+  last_judgment_at: string;
+  last_materialization_at: string;
+  last_smoke_at: string;
+  stale_reason_codes: string[];
+  pivot_reason_codes: string[];
+  search_budget_state: BudgetState;
 }
 
 interface TrackRuntimeState {
@@ -113,6 +125,8 @@ interface TrackRuntimeState {
   smoke_command: string;
   formal_command: string;
   allowed_change_scope: string[];
+  track_origin: RuntimeTrackOrigin;
+  force_fresh_thread: boolean;
   current_iteration: number;
   patience_streak: number;
   edit_turns_used: number;
@@ -122,6 +136,32 @@ interface TrackRuntimeState {
   last_decision: string;
   codex_thread_id: string | null;
   local_best: AcceptedBestSnapshot;
+  latest_run_id: string;
+  latest_smoke_run_id: string;
+  latest_formal_run_id: string;
+  latest_val_primary_metric: number | null;
+  latest_test_primary_metric: number | null;
+  latest_val_rmse: number | null;
+  latest_test_rmse: number | null;
+  best_val_primary_metric: number | null;
+  best_test_primary_metric: number | null;
+  best_val_rmse: number | null;
+  best_test_rmse: number | null;
+  last_result_summary: string;
+  method_variant_label: string;
+  input_mode_label: string;
+  series_class: string;
+  promotable: boolean;
+  tool_usage_summary: ThreadItemUsageSummary | null;
+  thinking_heartbeat_at: string;
+  last_retrieval_at: string;
+  last_decision_at: string;
+  last_judgment_at: string;
+  last_materialization_at: string;
+  last_smoke_at: string;
+  stale_reason_codes: string[];
+  pivot_reason_codes: string[];
+  search_budget_state: BudgetState;
   updated_at: string;
 }
 
@@ -147,6 +187,16 @@ interface CampaignStatus {
   codex_thread_id?: string | null;
   patience_streak?: number;
   last_error?: string | null;
+  tool_usage_summary: ThreadItemUsageSummary | null;
+  thinking_heartbeat_at: string;
+  last_retrieval_at: string;
+  last_decision_at: string;
+  last_judgment_at: string;
+  last_materialization_at: string;
+  last_smoke_at: string;
+  stale_reason_codes: string[];
+  pivot_reason_codes: string[];
+  search_budget_state: BudgetState;
 }
 
 interface CampaignRecord {
@@ -182,6 +232,16 @@ interface CampaignRecord {
   decision: string;
   next_step: string;
   artifacts: string[];
+  tool_usage_summary: ThreadItemUsageSummary | null;
+  thinking_heartbeat_at: string;
+  last_retrieval_at: string;
+  last_decision_at: string;
+  last_judgment_at: string;
+  last_materialization_at: string;
+  last_smoke_at: string;
+  stale_reason_codes: string[];
+  pivot_reason_codes: string[];
+  search_budget_state: BudgetState;
 }
 
 interface ParsedArgs {
@@ -227,6 +287,33 @@ interface ResearchEvidence extends ResearchQuery {
   source_url: string;
   source_title: string;
   why_it_matters: string;
+}
+
+interface ThreadItemUsageSummary {
+  total_items: number;
+  reasoning_items: number;
+  agent_messages: number;
+  command_executions: number;
+  file_changes: number;
+  web_searches: number;
+  mcp_tool_calls: number;
+  todo_lists: number;
+  errors: number;
+  completed_items: number;
+  failed_items: number;
+}
+
+interface TurnTelemetryState {
+  tool_usage_summary: ThreadItemUsageSummary | null;
+  thinking_heartbeat_at: string;
+  last_retrieval_at: string;
+  last_decision_at: string;
+  last_judgment_at: string;
+  last_materialization_at: string;
+  last_smoke_at: string;
+  stale_reason_codes: string[];
+  pivot_reason_codes: string[];
+  search_budget_state: BudgetState;
 }
 
 interface ResearchQueryLogEntry extends ResearchQuery {
@@ -301,6 +388,8 @@ const WALL_CLOCK_BUDGET_MS = 4 * 60 * 60 * 1000;
 const NEARING_CAP_RATIO = 0.75;
 const MAX_EDIT_TURNS_PER_TRACK = 2;
 const NO_IMPROVEMENT_LIMIT = 2;
+const AUTORESEARCH_EXPLORATION_REASONING_EFFORT = "medium";
+const AUTORESEARCH_CLOSEOUT_REASONING_EFFORT = "low";
 
 const ALLOWLIST = [
   /^scripts\/train_[^/]+\.py$/,
@@ -321,6 +410,432 @@ const DENYLIST_PATHS = [
   /^data\/.+$/,
   /^\/Volumes\/.+$/,
 ];
+
+export function campaignReasoningEffortForMode(mode: CampaignMode): string {
+  return mode === "closeout"
+    ? AUTORESEARCH_CLOSEOUT_REASONING_EFFORT
+    : AUTORESEARCH_EXPLORATION_REASONING_EFFORT;
+}
+
+export function shouldTrackSkipCodexEdit(track: CampaignTrack): boolean {
+  return Boolean(track.skipCodexEdit || track.validated);
+}
+
+function buildValidatedTrackBypassResult(track: CampaignTrack): CodexEditResult {
+  return {
+    proposal: {
+      hypothesis: "这条轨在进入 campaign 前已经过预验证，先直接看同口径 smoke/formal 是否能出分。",
+      why_this_change: "moonshot 轨已经完成 preflight，不需要再经过一轮通用代码编辑，直接进入同试次纯脑电验证更快。",
+      changes_summary: `跳过 codex edit，直接执行 ${track.runnerFamily ?? track.trackId} 的 smoke/formal 验证。`,
+      change_bucket: "model-led",
+      track_comparison_note: "This track was prevalidated outside the generic codex edit loop.",
+      files_touched: [],
+      next_step: "直接进入 smoke；如果 smoke 优于本地最优，再进 formal。",
+      search_queries: [],
+      research_evidence: [],
+    },
+    items: [],
+    threadId: null,
+  };
+}
+
+function buildValidatedTrackAudit(): {
+  allowedScopeOk: boolean;
+  filesTouched: string[];
+  fileChanges: Array<{ path: string; kind: string }>;
+  violations: string[];
+} {
+  return {
+    allowedScopeOk: true,
+    filesTouched: [],
+    fileChanges: [],
+    violations: [],
+  };
+}
+
+function buildValidatedTrackRelevance(): RelevanceClassification {
+  return {
+    label: "on_track",
+    reason: "这条轨在进入 campaign 前已经通过预验证，所以本轮直接把预算花在 smoke/formal，而不是重复 codex edit。",
+    hardBlock: false,
+    relevantPatterns: [],
+    coreFiles: [],
+    supportingFiles: [],
+    offTrackFiles: [],
+  };
+}
+
+function buildCampaignCodex(mode: CampaignMode): Codex {
+  return new Codex({
+    config: {
+      model_reasoning_effort: campaignReasoningEffortForMode(mode),
+    },
+  });
+}
+
+function inferTrackSeriesClass(trackId: string): string {
+  const normalized = trackId.trim().toLowerCase();
+  if (
+    normalized.includes("kinematics_only")
+    || normalized.includes("hybrid_brain_plus_kinematics")
+    || normalized.includes("tree_calibration")
+  ) {
+    return "control";
+  }
+  if (normalized.includes("relative_origin_xyz_upper_bound")) {
+    return "same_session_reference";
+  }
+  if (normalized.includes("relative_origin_xyz") || normalized.includes("phase_aware")) {
+    return "structure";
+  }
+  return "mainline_brain";
+}
+
+function inferTrackMethodVariantLabel(trackId: string, seriesClass: string): string {
+  const normalized = trackId.trim().toLowerCase();
+  if (normalized.includes("kinematics_only")) {
+    return "只用运动学历史，不用脑电";
+  }
+  if (normalized.includes("hybrid_brain_plus_kinematics")) {
+    return "混合输入（脑电 + 运动学历史）";
+  }
+  if (normalized.includes("tree_calibration")) {
+    return "树模型校准（Extra Trees）";
+  }
+  if (normalized.includes("phase_conditioned")) {
+    return "phase 条件版";
+  }
+  if (normalized.includes("phase_aware")) {
+    return "phase-aware 特征";
+  }
+  if (normalized.includes("dmd_sdm")) {
+    return "DMD/sDM 特征";
+  }
+  if (seriesClass === "same_session_reference") {
+    return "相对 RSCA 同试次参考";
+  }
+  if (seriesClass === "structure") {
+    return "相对 RSCA 三方向坐标";
+  }
+  if (normalized.startsWith("canonical_mainline")) {
+    return "标准主线";
+  }
+  return trackId;
+}
+
+function inferTrackInputModeLabel(trackId: string, seriesClass: string): string {
+  const normalized = trackId.trim().toLowerCase();
+  if (normalized.includes("kinematics_only")) {
+    return "只用运动学历史，不用脑电";
+  }
+  if (normalized.includes("hybrid_brain_plus_kinematics") || normalized.includes("tree_calibration")) {
+    return "脑电 + 运动学历史";
+  }
+  if (seriesClass === "same_session_reference") {
+    return "只用脑电（同试次参考）";
+  }
+  return "只用脑电";
+}
+
+function isPromotableSeriesClass(seriesClass: string): boolean {
+  return seriesClass === "mainline_brain";
+}
+
+function humanizeTrackModelFamily(modelFamily: string | null | undefined): string {
+  const normalized = String(modelFamily || "").trim().toLowerCase();
+  if (!normalized) {
+    return "未标注算法";
+  }
+  if (normalized.includes("feature_gru")) {
+    return "Feature GRU";
+  }
+  if (normalized.includes("feature_tcn")) {
+    return "Feature TCN";
+  }
+  if (normalized.includes("feature_lstm") || normalized.includes("lstm")) {
+    return "Feature LSTM";
+  }
+  if (normalized.includes("extra") && normalized.includes("tree")) {
+    return "Extra Trees";
+  }
+  if (normalized.includes("catboost")) {
+    return "CatBoost";
+  }
+  if (normalized.includes("xgboost")) {
+    return "XGBoost";
+  }
+  if (normalized.includes("ridge")) {
+    return "Ridge";
+  }
+  return modelFamily || "未标注算法";
+}
+
+function humanizeTrackDecision(decision: string, promotable: boolean): string {
+  const normalized = decision.trim().toLowerCase();
+  if (normalized === "hold_for_promotion_review") {
+    return "进入候选复审";
+  }
+  if (normalized === "hold_for_packet_gate") {
+    return promotable ? "已正式比较" : "控制实验，不进入主线晋升";
+  }
+  if (normalized === "accepted") {
+    return "已正式比较";
+  }
+  if (normalized === "rollback_command_failed") {
+    return "回滚/命令失败";
+  }
+  if (normalized === "rollback_broken_candidate") {
+    return "回滚/候选跑坏了";
+  }
+  if (normalized === "rollback_scope_violation") {
+    return "回滚/越界";
+  }
+  if (normalized === "rollback_irrelevant_change") {
+    return "回滚/改动不相关";
+  }
+  if (normalized === "smoke_not_better") {
+    return "快速比较没通过";
+  }
+  if (normalized === "codex_failed") {
+    return "编辑代理失败";
+  }
+  return decision || "未标注结果";
+}
+
+function pickLatestMetricValue(finalMetrics: MetricSnapshot | null, smokeMetrics: MetricSnapshot | null, field: keyof MetricSnapshot): number | null {
+  const finalValue = finalMetrics?.[field];
+  if (typeof finalValue === "number" && Number.isFinite(finalValue)) {
+    return finalValue;
+  }
+  const smokeValue = smokeMetrics?.[field];
+  if (typeof smokeValue === "number" && Number.isFinite(smokeValue)) {
+    return smokeValue;
+  }
+  return null;
+}
+
+function buildTrackResultSummary(
+  track: CampaignTrack,
+  {
+    decision,
+    smokeMetrics,
+    finalMetrics,
+  }: {
+    decision: string;
+    smokeMetrics: MetricSnapshot | null;
+    finalMetrics: MetricSnapshot | null;
+  },
+): string {
+  const seriesClass = inferTrackSeriesClass(track.trackId);
+  const algorithmLabel = humanizeTrackModelFamily(track.runnerFamily ?? finalMetrics?.model_family ?? smokeMetrics?.model_family);
+  const methodVariantLabel = inferTrackMethodVariantLabel(track.trackId, seriesClass);
+  const statusLabel = humanizeTrackDecision(decision, isPromotableSeriesClass(seriesClass));
+  const latestVal = pickLatestMetricValue(finalMetrics, smokeMetrics, "val_primary_metric");
+  const latestRmse = pickLatestMetricValue(finalMetrics, smokeMetrics, "val_rmse");
+  const parts = [`${methodVariantLabel} + ${algorithmLabel}`, statusLabel];
+  if (latestVal !== null) {
+    parts.push(`val r ${latestVal.toFixed(4)}`);
+  }
+  if (latestRmse !== null) {
+    parts.push(`val RMSE ${latestRmse.toFixed(3)}`);
+  }
+  return parts.join(" · ");
+}
+
+export function applyTrackRuntimeResultSummary({
+  trackState,
+  track,
+  runId,
+  smokeMetrics,
+  finalMetrics,
+  decision,
+}: {
+  trackState: TrackRuntimeState;
+  track: CampaignTrack;
+  runId: string;
+  smokeMetrics: MetricSnapshot | null;
+  finalMetrics: MetricSnapshot | null;
+  decision: string;
+}): void {
+  const seriesClass = inferTrackSeriesClass(track.trackId);
+  const promotable = isPromotableSeriesClass(seriesClass);
+  const latestValPrimary = pickLatestMetricValue(finalMetrics, smokeMetrics, "val_primary_metric");
+  const latestValRmse = pickLatestMetricValue(finalMetrics, smokeMetrics, "val_rmse");
+  const latestTestPrimary = pickLatestMetricValue(finalMetrics, smokeMetrics, "test_primary_metric");
+  const latestTestRmse = pickLatestMetricValue(finalMetrics, smokeMetrics, "test_rmse");
+
+  trackState.latest_run_id = runId;
+  trackState.latest_smoke_run_id = smokeMetrics ? runId : "";
+  trackState.latest_formal_run_id = finalMetrics ? runId : "";
+  trackState.latest_val_primary_metric = latestValPrimary;
+  trackState.latest_test_primary_metric = latestTestPrimary;
+  trackState.latest_val_rmse = latestValRmse;
+  trackState.latest_test_rmse = latestTestRmse;
+  trackState.method_variant_label = inferTrackMethodVariantLabel(track.trackId, seriesClass);
+  trackState.input_mode_label = inferTrackInputModeLabel(track.trackId, seriesClass);
+  trackState.series_class = seriesClass;
+  trackState.promotable = promotable;
+  trackState.last_result_summary = buildTrackResultSummary(track, {
+    decision,
+    smokeMetrics,
+    finalMetrics,
+  });
+
+  if (isBetterThan(latestValPrimary, trackState.best_val_primary_metric)) {
+    trackState.best_val_primary_metric = latestValPrimary;
+    trackState.best_test_primary_metric = latestTestPrimary;
+    trackState.best_val_rmse = latestValRmse;
+    trackState.best_test_rmse = latestTestRmse;
+  }
+}
+
+export function hydrateTrackRuntimeState(
+  trackState: TrackRuntimeState,
+  track: CampaignTrack,
+): TrackRuntimeState {
+  const seriesClass = inferTrackSeriesClass(track.trackId);
+  const resolvedSeriesClass = trackState.series_class || seriesClass;
+  const hasLegacySeriesClass = trackState.series_class.trim() !== "";
+  const runtimeTrack = track as RuntimeCampaignTrack;
+  return {
+    ...trackState,
+    track_id: track.trackId,
+    track_goal: track.trackGoal,
+    promotion_target: track.promotionTarget,
+    smoke_command: track.smokeCommand,
+    formal_command: track.formalCommand,
+    allowed_change_scope: [...track.allowedChangeScope],
+    track_origin: runtimeTrack.trackOrigin ?? trackState.track_origin ?? "default",
+    force_fresh_thread: runtimeTrack.forceFreshThread ?? trackState.force_fresh_thread ?? false,
+    method_variant_label: trackState.method_variant_label || inferTrackMethodVariantLabel(track.trackId, resolvedSeriesClass),
+    input_mode_label: trackState.input_mode_label || inferTrackInputModeLabel(track.trackId, resolvedSeriesClass),
+    series_class: resolvedSeriesClass,
+    promotable: hasLegacySeriesClass ? trackState.promotable : isPromotableSeriesClass(seriesClass),
+  };
+}
+
+export function shouldForceFreshThread(track: Pick<RuntimeCampaignTrack, "trackOrigin" | "forceFreshThread">): boolean {
+  return track.trackOrigin === "incubation" || Boolean(track.forceFreshThread);
+}
+
+export function summarizeThreadItemUsage(items: ThreadItem[]): ThreadItemUsageSummary {
+  const summary: ThreadItemUsageSummary = {
+    total_items: items.length,
+    reasoning_items: 0,
+    agent_messages: 0,
+    command_executions: 0,
+    file_changes: 0,
+    web_searches: 0,
+    mcp_tool_calls: 0,
+    todo_lists: 0,
+    errors: 0,
+    completed_items: 0,
+    failed_items: 0,
+  };
+
+  for (const item of items) {
+    switch (item.type) {
+      case "reasoning":
+        summary.reasoning_items += 1;
+        summary.completed_items += 1;
+        break;
+      case "agent_message":
+        summary.agent_messages += 1;
+        summary.completed_items += 1;
+        break;
+      case "command_execution":
+        summary.command_executions += 1;
+        if (item.status === "completed") {
+          summary.completed_items += 1;
+        } else if (item.status === "failed") {
+          summary.failed_items += 1;
+        }
+        break;
+      case "file_change":
+        summary.file_changes += 1;
+        if (item.status === "completed") {
+          summary.completed_items += 1;
+        } else if (item.status === "failed") {
+          summary.failed_items += 1;
+        }
+        break;
+      case "web_search":
+        summary.web_searches += 1;
+        break;
+      case "mcp_tool_call":
+        summary.mcp_tool_calls += 1;
+        if (item.status === "failed") {
+          summary.failed_items += 1;
+        }
+        break;
+      case "todo_list":
+        summary.todo_lists += 1;
+        break;
+      case "error":
+        summary.errors += 1;
+        break;
+      default:
+        break;
+    }
+  }
+
+  return summary;
+}
+
+export function deriveTurnTelemetry({
+  existing,
+  items,
+  decision,
+  smokeMetrics,
+  finalMetrics,
+  nowIso,
+}: {
+  existing: TurnTelemetryState;
+  items: ThreadItem[];
+  decision: string;
+  smokeMetrics: MetricSnapshot | null;
+  finalMetrics: MetricSnapshot | null;
+  nowIso: string;
+}): TurnTelemetryState {
+  const summary = summarizeThreadItemUsage(items);
+  const sawSearch = summary.web_searches > 0 || summary.mcp_tool_calls > 0;
+  const sawMaterialization = summary.command_executions > 0 || summary.file_changes > 0 || Boolean(smokeMetrics) || Boolean(finalMetrics);
+  const staleReasonCodes = new Set(existing.stale_reason_codes ?? []);
+  const pivotReasonCodes = new Set(existing.pivot_reason_codes ?? []);
+
+  if (sawSearch && !sawMaterialization) {
+    staleReasonCodes.add("search_only_no_materialization");
+  }
+  if (!smokeMetrics && sawMaterialization) {
+    staleReasonCodes.add("no_new_smoke");
+  }
+  if (summary.web_searches >= 8 || summary.mcp_tool_calls >= 40) {
+    staleReasonCodes.add("budget_capped");
+  }
+  if (decision === "smoke_not_better" || decision.startsWith("rollback")) {
+    pivotReasonCodes.add("needs_new_direction");
+  }
+  if (finalMetrics && smokeMetrics) {
+    pivotReasonCodes.add("formal_followup_available");
+  }
+
+  return {
+    tool_usage_summary: summary,
+    thinking_heartbeat_at: nowIso,
+    last_retrieval_at: sawSearch ? nowIso : existing.last_retrieval_at,
+    last_decision_at: nowIso,
+    last_judgment_at: nowIso,
+    last_materialization_at: sawMaterialization ? nowIso : existing.last_materialization_at,
+    last_smoke_at: summary.command_executions > 0 || Boolean(smokeMetrics) ? nowIso : existing.last_smoke_at,
+    stale_reason_codes: Array.from(staleReasonCodes),
+    pivot_reason_codes: Array.from(pivotReasonCodes),
+    search_budget_state: summary.web_searches >= 8 || summary.mcp_tool_calls >= 40
+      ? "capped"
+      : summary.web_searches >= 4 || summary.mcp_tool_calls >= 12
+        ? "nearing_cap"
+        : "healthy",
+  };
+}
 
 export async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -430,13 +945,13 @@ export async function main() {
     return;
   }
 
-  const codex = new Codex();
   const consecutiveLimit = patience > 0 ? patience : Number.POSITIVE_INFINITY;
   while (hasRunnableTracks(status, consecutiveLimit)) {
     refreshCampaignControlState(status);
     if (status.budget_state === "capped") {
       break;
     }
+    const codex = buildCampaignCodex(status.campaign_mode);
     let ranTrack = false;
 
     for (const track of effectiveTrackManifest.tracks) {
@@ -452,23 +967,28 @@ export async function main() {
 
       ranTrack = true;
       const trackAllowedDirs = resolveTrackAllowedDirs(track);
-      const thread = trackState.codex_thread_id
-        ? codex.resumeThread(trackState.codex_thread_id, {
-            workingDirectory: REPO_ROOT,
-            skipGitRepoCheck: true,
-            sandboxMode: "workspace-write",
-            approvalPolicy: "never",
-            networkAccessEnabled: Boolean(track.internetResearchEnabled),
-            additionalDirectories: trackAllowedDirs,
-          })
-        : codex.startThread({
-            workingDirectory: REPO_ROOT,
-            skipGitRepoCheck: true,
-            sandboxMode: "workspace-write",
-            approvalPolicy: "never",
-            networkAccessEnabled: Boolean(track.internetResearchEnabled),
-            additionalDirectories: trackAllowedDirs,
-          });
+      const skipCodexEdit = shouldTrackSkipCodexEdit(track);
+      const runtimeTrack = track as RuntimeCampaignTrack;
+      const forceFreshThread = shouldForceFreshThread(runtimeTrack);
+      const thread = skipCodexEdit
+        ? null
+        : forceFreshThread || !trackState.codex_thread_id
+          ? codex.startThread({
+              workingDirectory: REPO_ROOT,
+              skipGitRepoCheck: true,
+              sandboxMode: "workspace-write",
+              approvalPolicy: "never",
+              networkAccessEnabled: Boolean(track.internetResearchEnabled),
+              additionalDirectories: trackAllowedDirs,
+            })
+          : codex.resumeThread(trackState.codex_thread_id, {
+              workingDirectory: REPO_ROOT,
+              skipGitRepoCheck: true,
+              sandboxMode: "workspace-write",
+              approvalPolicy: "never",
+              networkAccessEnabled: Boolean(track.internetResearchEnabled),
+              additionalDirectories: trackAllowedDirs,
+            });
 
       const parentRunId = trackState.local_best.run_id || status.accepted_stable_best.run_id || null;
       const iteration = trackState.current_iteration + 1;
@@ -493,19 +1013,19 @@ export async function main() {
 
       const snapshot = await snapshotPaths(trackAllowedDirs);
       status.active_track_id = track.trackId;
-      status.stage = "editing";
-      status.current_command = "codex:edit";
+      status.stage = skipCodexEdit ? "smoke" : "editing";
+      status.current_command = skipCodexEdit ? "validated:skip_codex_edit" : "codex:edit";
       status.last_error = null;
       status.candidate = {
         ...buildEmptyCandidate(runId),
-        stage: "editing",
+        stage: skipCodexEdit ? "smoke" : "editing",
         track_id: track.trackId,
         track_goal: track.trackGoal,
         promotion_target: track.promotionTarget,
-        decision: "editing",
-        next_step: "等待候选改动生成。",
+        decision: skipCodexEdit ? "validated_preflighted" : "editing",
+        next_step: skipCodexEdit ? "这条轨已通过预验证，直接进入 smoke。" : "等待候选改动生成。",
       };
-      trackState.stage = "editing";
+      trackState.stage = skipCodexEdit ? "smoke" : "editing";
       trackState.last_run_id = runId;
       trackState.updated_at = new Date().toISOString();
       status.updated_at = new Date().toISOString();
@@ -513,71 +1033,107 @@ export async function main() {
 
       let codexResult: CodexEditResult;
       let touchedFiles: string[] = [];
-      try {
-        codexResult = await runCodexEditTurn({
-          thread,
-          campaignId,
-          iteration,
-          status,
-          track,
-          allowedDirs: trackAllowedDirs,
-          programDocuments,
-        });
-        trackState.codex_thread_id = codexResult.threadId;
-      } catch (error) {
-        await restoreSnapshot(snapshot, touchedFiles);
-        status.stage = "paused";
-        status.current_command = "";
-        status.last_error = stringifyError(error);
-        status.candidate = {
-          ...buildEmptyCandidate(runId),
-          track_id: track.trackId,
-          track_goal: track.trackGoal,
-          promotion_target: track.promotionTarget,
-          rollback_applied: true,
-          allowed_scope_ok: false,
-          decision: "codex_failed",
-          next_step: "修复代理提示或命令，再继续下一轮。",
-          artifacts: [STATUS_PATH, TOOLS_LEDGER_PATH, MONITOR_LEDGER_PATH],
-        };
-        trackState.stage = "paused";
-        trackState.last_decision = "codex_failed";
-        trackState.patience_streak += 1;
-        trackState.current_iteration = iteration;
-        trackState.updated_at = new Date().toISOString();
-        status.updated_at = new Date().toISOString();
-        await recordIteration({
-          status,
-          iteration,
-          runId,
-          parentRunId,
-          track,
-          smokeMetrics: null,
-          finalMetrics: null,
-          filesTouched: [],
-          commands: [],
-          searchQueries: [],
-          researchEvidence: [],
-          allowedScopeOk: false,
-          rollbackApplied: true,
-          relevanceLabel: "off_track_but_ran",
-          relevanceReason: "代理回合在生成候选前就失败了，所以这轮没有形成可比较的实验改动。",
-          decision: "codex_failed",
-          nextStep: status.candidate.next_step,
-          hypothesis: status.candidate.hypothesis,
-          whyThisChange: status.candidate.why_this_change,
-          changesSummary: status.candidate.changes_summary,
-          changeBucket: status.candidate.change_bucket,
-          trackComparisonNote: status.candidate.track_comparison_note,
-          artifacts: status.candidate.artifacts,
-          reviewPacketDir,
-        });
-        await writeStatus(status);
-        continue;
+      if (skipCodexEdit) {
+        codexResult = buildValidatedTrackBypassResult(track);
+      } else {
+        try {
+          codexResult = await runCodexEditTurn({
+            thread: thread!,
+            campaignId,
+            iteration,
+            status,
+            track,
+            allowedDirs: trackAllowedDirs,
+            programDocuments,
+          });
+          trackState.codex_thread_id = codexResult.threadId;
+        } catch (error) {
+          await restoreSnapshot(snapshot, touchedFiles);
+          status.stage = "paused";
+          status.current_command = "";
+          status.last_error = stringifyError(error);
+          status.candidate = {
+            ...buildEmptyCandidate(runId),
+            track_id: track.trackId,
+            track_goal: track.trackGoal,
+            promotion_target: track.promotionTarget,
+            rollback_applied: true,
+            allowed_scope_ok: false,
+            decision: "codex_failed",
+            next_step: "修复代理提示或命令，再继续下一轮。",
+            artifacts: [STATUS_PATH, TOOLS_LEDGER_PATH, MONITOR_LEDGER_PATH],
+          };
+          trackState.stage = "paused";
+          trackState.last_decision = "codex_failed";
+          trackState.patience_streak += 1;
+          trackState.current_iteration = iteration;
+          applyTrackRuntimeResultSummary({
+            trackState,
+            track,
+            runId,
+            smokeMetrics: null,
+            finalMetrics: null,
+            decision: "codex_failed",
+          });
+          trackState.updated_at = new Date().toISOString();
+          status.updated_at = new Date().toISOString();
+          const failureTelemetry = deriveTurnTelemetry({
+            existing: {
+              tool_usage_summary: status.tool_usage_summary,
+              thinking_heartbeat_at: status.thinking_heartbeat_at,
+              last_retrieval_at: status.last_retrieval_at,
+              last_decision_at: status.last_decision_at,
+              last_judgment_at: status.last_judgment_at,
+              last_materialization_at: status.last_materialization_at,
+              last_smoke_at: status.last_smoke_at,
+              stale_reason_codes: status.stale_reason_codes,
+              pivot_reason_codes: status.pivot_reason_codes,
+              search_budget_state: status.search_budget_state,
+            },
+            items: [],
+            decision: "codex_failed",
+            smokeMetrics: null,
+            finalMetrics: null,
+            nowIso: new Date().toISOString(),
+          });
+          await recordIteration({
+            status,
+            iteration,
+            runId,
+            parentRunId,
+            track,
+            smokeMetrics: null,
+            finalMetrics: null,
+            filesTouched: [],
+            commands: [],
+            searchQueries: [],
+            researchEvidence: [],
+            allowedScopeOk: false,
+            rollbackApplied: true,
+            relevanceLabel: "off_track_but_ran",
+            relevanceReason: "代理回合在生成候选前就失败了，所以这轮没有形成可比较的实验改动。",
+            decision: "codex_failed",
+            nextStep: status.candidate.next_step,
+            hypothesis: status.candidate.hypothesis,
+            whyThisChange: status.candidate.why_this_change,
+            changesSummary: status.candidate.changes_summary,
+            changeBucket: status.candidate.change_bucket,
+            trackComparisonNote: status.candidate.track_comparison_note,
+            artifacts: status.candidate.artifacts,
+            telemetry: failureTelemetry,
+            reviewPacketDir,
+          });
+          await writeStatus(status);
+          continue;
+        }
       }
 
-      const audit = auditFileChanges(codexResult.items, trackAllowedDirs);
-      const relevance = classifyCommandRelevance(audit.filesTouched, track.smokeCommand, track.formalCommand);
+      const audit = skipCodexEdit
+        ? buildValidatedTrackAudit()
+        : auditFileChanges(codexResult.items, trackAllowedDirs);
+      const relevance = skipCodexEdit
+        ? buildValidatedTrackRelevance()
+        : classifyCommandRelevance(audit.filesTouched, track.smokeCommand, track.formalCommand);
       touchedFiles = audit.filesTouched;
       const observedCommands = collectCommandStrings(codexResult.items);
       const proposal = codexResult.proposal;
@@ -721,12 +1277,61 @@ export async function main() {
       }
 
       trackState.current_iteration = iteration;
-      trackState.edit_turns_used += 1;
+      if (!skipCodexEdit) {
+        trackState.edit_turns_used += 1;
+      }
       if (finalMetrics?.val_primary_metric !== null) {
         trackState.formal_runs_completed += 1;
       }
       trackState.last_run_id = runId;
       trackState.last_decision = decision;
+      applyTrackRuntimeResultSummary({
+        trackState,
+        track,
+        runId,
+        smokeMetrics,
+        finalMetrics,
+        decision,
+      });
+      const telemetry = deriveTurnTelemetry({
+        existing: {
+          tool_usage_summary: status.tool_usage_summary,
+          thinking_heartbeat_at: status.thinking_heartbeat_at,
+          last_retrieval_at: status.last_retrieval_at,
+          last_decision_at: status.last_decision_at,
+          last_judgment_at: status.last_judgment_at,
+          last_materialization_at: status.last_materialization_at,
+          last_smoke_at: status.last_smoke_at,
+          stale_reason_codes: status.stale_reason_codes,
+          pivot_reason_codes: status.pivot_reason_codes,
+          search_budget_state: status.search_budget_state,
+        },
+        items: codexResult.items,
+        decision,
+        smokeMetrics,
+        finalMetrics,
+        nowIso: new Date().toISOString(),
+      });
+      status.tool_usage_summary = telemetry.tool_usage_summary;
+      status.thinking_heartbeat_at = telemetry.thinking_heartbeat_at;
+      status.last_retrieval_at = telemetry.last_retrieval_at;
+      status.last_decision_at = telemetry.last_decision_at;
+      status.last_judgment_at = telemetry.last_judgment_at;
+      status.last_materialization_at = telemetry.last_materialization_at;
+      status.last_smoke_at = telemetry.last_smoke_at;
+      status.stale_reason_codes = telemetry.stale_reason_codes;
+      status.pivot_reason_codes = telemetry.pivot_reason_codes;
+      status.search_budget_state = telemetry.search_budget_state;
+      trackState.tool_usage_summary = telemetry.tool_usage_summary;
+      trackState.thinking_heartbeat_at = telemetry.thinking_heartbeat_at;
+      trackState.last_retrieval_at = telemetry.last_retrieval_at;
+      trackState.last_decision_at = telemetry.last_decision_at;
+      trackState.last_judgment_at = telemetry.last_judgment_at;
+      trackState.last_materialization_at = telemetry.last_materialization_at;
+      trackState.last_smoke_at = telemetry.last_smoke_at;
+      trackState.stale_reason_codes = telemetry.stale_reason_codes;
+      trackState.pivot_reason_codes = telemetry.pivot_reason_codes;
+      trackState.search_budget_state = telemetry.search_budget_state;
       trackState.updated_at = new Date().toISOString();
       status.current_command = "";
       status.candidate = {
@@ -763,6 +1368,16 @@ export async function main() {
         decision,
         next_step: nextStep,
         artifacts: candidateArtifacts,
+        tool_usage_summary: telemetry.tool_usage_summary,
+        thinking_heartbeat_at: telemetry.thinking_heartbeat_at,
+        last_retrieval_at: telemetry.last_retrieval_at,
+        last_decision_at: telemetry.last_decision_at,
+        last_judgment_at: telemetry.last_judgment_at,
+        last_materialization_at: telemetry.last_materialization_at,
+        last_smoke_at: telemetry.last_smoke_at,
+        stale_reason_codes: telemetry.stale_reason_codes,
+        pivot_reason_codes: telemetry.pivot_reason_codes,
+        search_budget_state: telemetry.search_budget_state,
       };
       status.updated_at = new Date().toISOString();
       await recordIteration({
@@ -789,6 +1404,7 @@ export async function main() {
         changeBucket: proposal.change_bucket,
         trackComparisonNote: proposal.track_comparison_note,
         artifacts: candidateArtifacts,
+        telemetry,
         reviewPacketDir,
       });
       await writeStatus(status);
@@ -884,6 +1500,26 @@ async function initializeBaseline({
   status.updated_at = new Date().toISOString();
   await writeStatus(status);
 
+  const telemetry = deriveTurnTelemetry({
+    existing: {
+      tool_usage_summary: status.tool_usage_summary,
+      thinking_heartbeat_at: status.thinking_heartbeat_at,
+      last_retrieval_at: status.last_retrieval_at,
+      last_decision_at: status.last_decision_at,
+      last_judgment_at: status.last_judgment_at,
+      last_materialization_at: status.last_materialization_at,
+      last_smoke_at: status.last_smoke_at,
+      stale_reason_codes: status.stale_reason_codes,
+      pivot_reason_codes: status.pivot_reason_codes,
+      search_budget_state: status.search_budget_state,
+    },
+    items: [],
+    decision: "baseline_initialized",
+    smokeMetrics: summary,
+    finalMetrics: null,
+    nowIso: new Date().toISOString(),
+  });
+
   await recordIteration({
     status,
     iteration: 0,
@@ -908,6 +1544,7 @@ async function initializeBaseline({
     changeBucket: "model-led",
     trackComparisonNote: "Canonical baseline established for future promotion comparisons.",
     artifacts: baselineArtifacts,
+    telemetry,
     reviewPacketDir,
   });
 }
@@ -994,6 +1631,25 @@ async function runBankQcGate({
     artifacts: [STATUS_PATH, TOOLS_LEDGER_PATH, MONITOR_LEDGER_PATH],
   };
   status.updated_at = new Date().toISOString();
+  const telemetry = deriveTurnTelemetry({
+    existing: {
+      tool_usage_summary: status.tool_usage_summary,
+      thinking_heartbeat_at: status.thinking_heartbeat_at,
+      last_retrieval_at: status.last_retrieval_at,
+      last_decision_at: status.last_decision_at,
+      last_judgment_at: status.last_judgment_at,
+      last_materialization_at: status.last_materialization_at,
+      last_smoke_at: status.last_smoke_at,
+      stale_reason_codes: status.stale_reason_codes,
+      pivot_reason_codes: status.pivot_reason_codes,
+      search_budget_state: status.search_budget_state,
+    },
+    items: [],
+    decision: "bank_qc_failed",
+    smokeMetrics: null,
+    finalMetrics: null,
+    nowIso: new Date().toISOString(),
+  });
   await recordIteration({
     status,
     iteration,
@@ -1018,6 +1674,7 @@ async function runBankQcGate({
     changeBucket: status.candidate.change_bucket,
     trackComparisonNote: status.candidate.track_comparison_note,
     artifacts: status.candidate.artifacts,
+    telemetry,
     reviewPacketDir,
   });
   await writeStatus(status);
@@ -1081,6 +1738,16 @@ function buildInitialStatus({
       codex_thread_id: typeof existingStatus.codex_thread_id === "string" ? existingStatus.codex_thread_id : null,
       patience_streak: Number(existingStatus.patience_streak ?? 0),
       last_error: typeof existingStatus.last_error === "string" ? existingStatus.last_error : null,
+      tool_usage_summary: normalizeThreadItemUsageSummary((existingStatus as Record<string, unknown>).tool_usage_summary),
+      thinking_heartbeat_at: String((existingStatus as Record<string, unknown>).thinking_heartbeat_at ?? ""),
+      last_retrieval_at: String((existingStatus as Record<string, unknown>).last_retrieval_at ?? ""),
+      last_decision_at: String((existingStatus as Record<string, unknown>).last_decision_at ?? ""),
+      last_judgment_at: String((existingStatus as Record<string, unknown>).last_judgment_at ?? ""),
+      last_materialization_at: String((existingStatus as Record<string, unknown>).last_materialization_at ?? ""),
+      last_smoke_at: String((existingStatus as Record<string, unknown>).last_smoke_at ?? ""),
+      stale_reason_codes: parseStringArray((existingStatus as Record<string, unknown>).stale_reason_codes),
+      pivot_reason_codes: parseStringArray((existingStatus as Record<string, unknown>).pivot_reason_codes),
+      search_budget_state: normalizeBudgetState((existingStatus as Record<string, unknown>).search_budget_state),
     };
   }
 
@@ -1122,6 +1789,16 @@ function buildInitialStatus({
     codex_thread_id: null,
     patience_streak: 0,
     last_error: null,
+    tool_usage_summary: null,
+    thinking_heartbeat_at: "",
+    last_retrieval_at: "",
+    last_decision_at: "",
+    last_judgment_at: "",
+    last_materialization_at: "",
+    last_smoke_at: "",
+    stale_reason_codes: [],
+    pivot_reason_codes: [],
+    search_budget_state: "healthy",
   };
 }
 
@@ -1138,6 +1815,8 @@ function normalizeTrackStates(value: unknown): TrackRuntimeState[] {
       smoke_command: String(record.smoke_command ?? ""),
       formal_command: String(record.formal_command ?? ""),
       allowed_change_scope: parseStringArray(record.allowed_change_scope),
+      track_origin: normalizeTrackOrigin(record.track_origin),
+      force_fresh_thread: parseBoolean(record.force_fresh_thread),
       current_iteration: Number(record.current_iteration ?? 0),
       patience_streak: Number(record.patience_streak ?? 0),
       edit_turns_used: Number(record.edit_turns_used ?? record.current_iteration ?? 0),
@@ -1147,11 +1826,39 @@ function normalizeTrackStates(value: unknown): TrackRuntimeState[] {
       last_decision: String(record.last_decision ?? ""),
       codex_thread_id: typeof record.codex_thread_id === "string" ? record.codex_thread_id : null,
       local_best: normalizeAcceptedBest(record.local_best),
+      latest_run_id: String(record.latest_run_id ?? ""),
+      latest_smoke_run_id: String(record.latest_smoke_run_id ?? ""),
+      latest_formal_run_id: String(record.latest_formal_run_id ?? ""),
+      latest_val_primary_metric: toNumberOrNull(record.latest_val_primary_metric),
+      latest_test_primary_metric: toNumberOrNull(record.latest_test_primary_metric),
+      latest_val_rmse: toNumberOrNull(record.latest_val_rmse),
+      latest_test_rmse: toNumberOrNull(record.latest_test_rmse),
+      best_val_primary_metric: toNumberOrNull(record.best_val_primary_metric),
+      best_test_primary_metric: toNumberOrNull(record.best_test_primary_metric),
+      best_val_rmse: toNumberOrNull(record.best_val_rmse),
+      best_test_rmse: toNumberOrNull(record.best_test_rmse),
+      last_result_summary: String(record.last_result_summary ?? ""),
+      method_variant_label: String(record.method_variant_label ?? ""),
+      input_mode_label: String(record.input_mode_label ?? ""),
+      series_class: String(record.series_class ?? ""),
+      promotable: parseBoolean(record.promotable),
+      tool_usage_summary: normalizeThreadItemUsageSummary(record.tool_usage_summary),
+      thinking_heartbeat_at: String(record.thinking_heartbeat_at ?? ""),
+      last_retrieval_at: String(record.last_retrieval_at ?? ""),
+      last_decision_at: String(record.last_decision_at ?? ""),
+      last_judgment_at: String(record.last_judgment_at ?? ""),
+      last_materialization_at: String(record.last_materialization_at ?? ""),
+      last_smoke_at: String(record.last_smoke_at ?? ""),
+      stale_reason_codes: parseStringArray(record.stale_reason_codes),
+      pivot_reason_codes: parseStringArray(record.pivot_reason_codes),
+      search_budget_state: normalizeBudgetState(record.search_budget_state),
       updated_at: String(record.updated_at ?? new Date().toISOString()),
     }));
 }
 
 function buildTrackRuntimeState(track: CampaignTrack): TrackRuntimeState {
+  const seriesClass = inferTrackSeriesClass(track.trackId);
+  const runtimeTrack = track as RuntimeCampaignTrack;
   return {
     track_id: track.trackId,
     track_goal: track.trackGoal,
@@ -1159,6 +1866,8 @@ function buildTrackRuntimeState(track: CampaignTrack): TrackRuntimeState {
     smoke_command: track.smokeCommand,
     formal_command: track.formalCommand,
     allowed_change_scope: [...track.allowedChangeScope],
+    track_origin: runtimeTrack.trackOrigin ?? "default",
+    force_fresh_thread: runtimeTrack.forceFreshThread ?? false,
     current_iteration: 0,
     patience_streak: 0,
     edit_turns_used: 0,
@@ -1168,6 +1877,32 @@ function buildTrackRuntimeState(track: CampaignTrack): TrackRuntimeState {
     last_decision: "",
     codex_thread_id: null,
     local_best: normalizeAcceptedBest(null),
+    latest_run_id: "",
+    latest_smoke_run_id: "",
+    latest_formal_run_id: "",
+    latest_val_primary_metric: null,
+    latest_test_primary_metric: null,
+    latest_val_rmse: null,
+    latest_test_rmse: null,
+    best_val_primary_metric: null,
+    best_test_primary_metric: null,
+    best_val_rmse: null,
+    best_test_rmse: null,
+    last_result_summary: "",
+    method_variant_label: inferTrackMethodVariantLabel(track.trackId, seriesClass),
+    input_mode_label: inferTrackInputModeLabel(track.trackId, seriesClass),
+    series_class: seriesClass,
+    promotable: isPromotableSeriesClass(seriesClass),
+    tool_usage_summary: null,
+    thinking_heartbeat_at: "",
+    last_retrieval_at: "",
+    last_decision_at: "",
+    last_judgment_at: "",
+    last_materialization_at: "",
+    last_smoke_at: "",
+    stale_reason_codes: [],
+    pivot_reason_codes: [],
+    search_budget_state: "healthy",
     updated_at: new Date().toISOString(),
   };
 }
@@ -1179,15 +1914,7 @@ function syncTrackStates(existing: TrackRuntimeState[], tracks: CampaignTrack[])
     if (!existingState) {
       return buildTrackRuntimeState(track);
     }
-    return {
-      ...existingState,
-      track_id: track.trackId,
-      track_goal: track.trackGoal,
-      promotion_target: track.promotionTarget,
-      smoke_command: track.smokeCommand,
-      formal_command: track.formalCommand,
-      allowed_change_scope: [...track.allowedChangeScope],
-    };
+    return hydrateTrackRuntimeState(existingState, track);
   });
 }
 
@@ -1398,6 +2125,31 @@ function normalizeBudgetState(value: unknown): BudgetState {
   return "healthy";
 }
 
+function normalizeTrackOrigin(value: unknown): RuntimeTrackOrigin {
+  return value === "incubation" ? "incubation" : "default";
+}
+
+function normalizeThreadItemUsageSummary(value: unknown): ThreadItemUsageSummary | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  return {
+    total_items: Number(record.total_items ?? 0),
+    reasoning_items: Number(record.reasoning_items ?? 0),
+    agent_messages: Number(record.agent_messages ?? 0),
+    command_executions: Number(record.command_executions ?? 0),
+    file_changes: Number(record.file_changes ?? 0),
+    web_searches: Number(record.web_searches ?? 0),
+    mcp_tool_calls: Number(record.mcp_tool_calls ?? 0),
+    todo_lists: Number(record.todo_lists ?? 0),
+    errors: Number(record.errors ?? 0),
+    completed_items: Number(record.completed_items ?? 0),
+    failed_items: Number(record.failed_items ?? 0),
+  };
+}
+
 function normalizeStopReason(value: unknown): StopReason {
   if (value === "no_improvement" || value === "wall_clock_cap" || value === "manual_stop_loss") {
     return value;
@@ -1476,6 +2228,16 @@ function normalizeCandidate(value: unknown): CandidateSnapshot {
     decision: String(record.decision ?? ""),
     next_step: String(record.next_step ?? ""),
     artifacts: parseStringArray(record.artifacts),
+    tool_usage_summary: normalizeThreadItemUsageSummary(record.tool_usage_summary),
+    thinking_heartbeat_at: String(record.thinking_heartbeat_at ?? ""),
+    last_retrieval_at: String(record.last_retrieval_at ?? ""),
+    last_decision_at: String(record.last_decision_at ?? ""),
+    last_judgment_at: String(record.last_judgment_at ?? ""),
+    last_materialization_at: String(record.last_materialization_at ?? ""),
+    last_smoke_at: String(record.last_smoke_at ?? ""),
+    stale_reason_codes: parseStringArray(record.stale_reason_codes),
+    pivot_reason_codes: parseStringArray(record.pivot_reason_codes),
+    search_budget_state: normalizeBudgetState(record.search_budget_state),
   };
 }
 
@@ -1504,6 +2266,16 @@ function buildEmptyCandidate(runId: string): CandidateSnapshot {
     decision: "pending",
     next_step: "",
     artifacts: [],
+    tool_usage_summary: null,
+    thinking_heartbeat_at: "",
+    last_retrieval_at: "",
+    last_decision_at: "",
+    last_judgment_at: "",
+    last_materialization_at: "",
+    last_smoke_at: "",
+    stale_reason_codes: [],
+    pivot_reason_codes: [],
+    search_budget_state: "healthy",
   };
 }
 
@@ -1849,6 +2621,16 @@ function deriveRelevantPatterns(smokeCommand: string, formalCommand: string): st
     patterns.add("^src/bci_autoresearch/features/.+$");
     patterns.add("^src/bci_autoresearch/models/.+$");
   }
+  if (combined.includes("train_feature_gru.py") || combined.includes("feature_gru")) {
+    patterns.add("^scripts/train_feature_gru\\.py$");
+    patterns.add("^src/bci_autoresearch/features/.+$");
+    patterns.add("^src/bci_autoresearch/models/.+$");
+  }
+  if (combined.includes("train_feature_tcn.py") || combined.includes("feature_tcn")) {
+    patterns.add("^scripts/train_feature_tcn\\.py$");
+    patterns.add("^src/bci_autoresearch/features/.+$");
+    patterns.add("^src/bci_autoresearch/models/.+$");
+  }
   if (combined.includes("train_lstm.py")) {
     patterns.add("^scripts/train_lstm\\.py$");
     patterns.add("^src/bci_autoresearch/models/.+$");
@@ -2140,6 +2922,7 @@ async function recordIteration({
   changeBucket,
   trackComparisonNote,
   artifacts,
+  telemetry,
   reviewPacketDir,
 }: {
   status: CampaignStatus;
@@ -2165,6 +2948,7 @@ async function recordIteration({
   changeBucket: string;
   trackComparisonNote: string;
   artifacts: string[];
+  telemetry: TurnTelemetryState;
   reviewPacketDir: string;
 }) {
   const record: CampaignRecord = {
@@ -2200,6 +2984,16 @@ async function recordIteration({
     decision,
     next_step: nextStep,
     artifacts,
+    tool_usage_summary: telemetry.tool_usage_summary,
+    thinking_heartbeat_at: telemetry.thinking_heartbeat_at,
+    last_retrieval_at: telemetry.last_retrieval_at,
+    last_decision_at: telemetry.last_decision_at,
+    last_judgment_at: telemetry.last_judgment_at,
+    last_materialization_at: telemetry.last_materialization_at,
+    last_smoke_at: telemetry.last_smoke_at,
+    stale_reason_codes: telemetry.stale_reason_codes,
+    pivot_reason_codes: telemetry.pivot_reason_codes,
+    search_budget_state: telemetry.search_budget_state,
   };
 
   const line = `${JSON.stringify(record)}\n`;

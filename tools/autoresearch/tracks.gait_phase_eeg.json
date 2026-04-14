@@ -1,0 +1,613 @@
+{
+  "review_cadence": "hourly",
+  "tracks": [
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w0p5_l0",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 0.5,
+      "global_lag_ms": 0,
+      "track_goal": "Feature GRU 在 0.5 秒窗、0 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 0.5 --global-lag-ms 0 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 0.5 --global-lag-ms 0 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w0p5_l100",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 0.5,
+      "global_lag_ms": 100,
+      "track_goal": "Feature GRU 在 0.5 秒窗、100 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 0.5 --global-lag-ms 100 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 0.5 --global-lag-ms 100 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w0p5_l250",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 0.5,
+      "global_lag_ms": 250,
+      "track_goal": "Feature GRU 在 0.5 秒窗、250 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 0.5 --global-lag-ms 250 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 0.5 --global-lag-ms 250 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w0p5_l500",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 0.5,
+      "global_lag_ms": 500,
+      "track_goal": "Feature GRU 在 0.5 秒窗、500 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 0.5 --global-lag-ms 500 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 0.5 --global-lag-ms 500 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w1p0_l0",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 1.0,
+      "global_lag_ms": 0,
+      "track_goal": "Feature GRU 在 1.0 秒窗、0 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 1.0 --global-lag-ms 0 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 1.0 --global-lag-ms 0 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w1p0_l100",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 1.0,
+      "global_lag_ms": 100,
+      "track_goal": "Feature GRU 在 1.0 秒窗、100 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 1.0 --global-lag-ms 100 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 1.0 --global-lag-ms 100 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w1p0_l250",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 1.0,
+      "global_lag_ms": 250,
+      "track_goal": "Feature GRU 在 1.0 秒窗、250 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 1.0 --global-lag-ms 250 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 1.0 --global-lag-ms 250 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w1p0_l500",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 1.0,
+      "global_lag_ms": 500,
+      "track_goal": "Feature GRU 在 1.0 秒窗、500 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 1.0 --global-lag-ms 500 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 1.0 --global-lag-ms 500 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w2p0_l0",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 2.0,
+      "global_lag_ms": 0,
+      "track_goal": "Feature GRU 在 2.0 秒窗、0 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 2.0 --global-lag-ms 0 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 2.0 --global-lag-ms 0 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w2p0_l100",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 2.0,
+      "global_lag_ms": 100,
+      "track_goal": "Feature GRU 在 2.0 秒窗、100 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 2.0 --global-lag-ms 100 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 2.0 --global-lag-ms 100 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w2p0_l250",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 2.0,
+      "global_lag_ms": 250,
+      "track_goal": "Feature GRU 在 2.0 秒窗、250 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 2.0 --global-lag-ms 250 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 2.0 --global-lag-ms 250 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w2p0_l500",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 2.0,
+      "global_lag_ms": 500,
+      "track_goal": "Feature GRU 在 2.0 秒窗、500 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 2.0 --global-lag-ms 500 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 2.0 --global-lag-ms 500 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w3p0_l0",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 3.0,
+      "global_lag_ms": 0,
+      "track_goal": "Feature GRU 在 3.0 秒窗、0 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 3.0 --global-lag-ms 0 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 3.0 --global-lag-ms 0 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w3p0_l100",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 3.0,
+      "global_lag_ms": 100,
+      "track_goal": "Feature GRU 在 3.0 秒窗、100 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 3.0 --global-lag-ms 100 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 3.0 --global-lag-ms 100 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w3p0_l250",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 3.0,
+      "global_lag_ms": 250,
+      "track_goal": "Feature GRU 在 3.0 秒窗、250 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 3.0 --global-lag-ms 250 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 3.0 --global-lag-ms 250 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_gru_w3p0_l500",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 3.0,
+      "global_lag_ms": 500,
+      "track_goal": "Feature GRU 在 3.0 秒窗、500 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 3.0 --global-lag-ms 500 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_gru --window-seconds 3.0 --global-lag-ms 500 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w0p5_l0",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 0.5,
+      "global_lag_ms": 0,
+      "track_goal": "Feature TCN 在 0.5 秒窗、0 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 0.5 --global-lag-ms 0 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 0.5 --global-lag-ms 0 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w0p5_l100",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 0.5,
+      "global_lag_ms": 100,
+      "track_goal": "Feature TCN 在 0.5 秒窗、100 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 0.5 --global-lag-ms 100 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 0.5 --global-lag-ms 100 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w0p5_l250",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 0.5,
+      "global_lag_ms": 250,
+      "track_goal": "Feature TCN 在 0.5 秒窗、250 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 0.5 --global-lag-ms 250 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 0.5 --global-lag-ms 250 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w0p5_l500",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 0.5,
+      "global_lag_ms": 500,
+      "track_goal": "Feature TCN 在 0.5 秒窗、500 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 0.5 --global-lag-ms 500 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 0.5 --global-lag-ms 500 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w1p0_l0",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 1.0,
+      "global_lag_ms": 0,
+      "track_goal": "Feature TCN 在 1.0 秒窗、0 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 1.0 --global-lag-ms 0 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 1.0 --global-lag-ms 0 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w1p0_l100",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 1.0,
+      "global_lag_ms": 100,
+      "track_goal": "Feature TCN 在 1.0 秒窗、100 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 1.0 --global-lag-ms 100 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 1.0 --global-lag-ms 100 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w1p0_l250",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 1.0,
+      "global_lag_ms": 250,
+      "track_goal": "Feature TCN 在 1.0 秒窗、250 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 1.0 --global-lag-ms 250 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 1.0 --global-lag-ms 250 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w1p0_l500",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 1.0,
+      "global_lag_ms": 500,
+      "track_goal": "Feature TCN 在 1.0 秒窗、500 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 1.0 --global-lag-ms 500 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 1.0 --global-lag-ms 500 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w2p0_l0",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 2.0,
+      "global_lag_ms": 0,
+      "track_goal": "Feature TCN 在 2.0 秒窗、0 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 2.0 --global-lag-ms 0 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 2.0 --global-lag-ms 0 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w2p0_l100",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 2.0,
+      "global_lag_ms": 100,
+      "track_goal": "Feature TCN 在 2.0 秒窗、100 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 2.0 --global-lag-ms 100 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 2.0 --global-lag-ms 100 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w2p0_l250",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 2.0,
+      "global_lag_ms": 250,
+      "track_goal": "Feature TCN 在 2.0 秒窗、250 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 2.0 --global-lag-ms 250 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 2.0 --global-lag-ms 250 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w2p0_l500",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 2.0,
+      "global_lag_ms": 500,
+      "track_goal": "Feature TCN 在 2.0 秒窗、500 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 2.0 --global-lag-ms 500 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 2.0 --global-lag-ms 500 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w3p0_l0",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 3.0,
+      "global_lag_ms": 0,
+      "track_goal": "Feature TCN 在 3.0 秒窗、0 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 3.0 --global-lag-ms 0 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 3.0 --global-lag-ms 0 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w3p0_l100",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 3.0,
+      "global_lag_ms": 100,
+      "track_goal": "Feature TCN 在 3.0 秒窗、100 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 3.0 --global-lag-ms 100 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 3.0 --global-lag-ms 100 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w3p0_l250",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 3.0,
+      "global_lag_ms": 250,
+      "track_goal": "Feature TCN 在 3.0 秒窗、250 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 3.0 --global-lag-ms 250 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 3.0 --global-lag-ms 250 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_feature_tcn_w3p0_l500",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "feature_tcn",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 3.0,
+      "global_lag_ms": 500,
+      "track_goal": "Feature TCN 在 3.0 秒窗、500 毫秒固定全局时延下，先做 smoke 摸清 timing 信息量，再参加 top-k formal 排名。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64_smoke.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 3.0 --global-lag-ms 500 --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --max-anchors-per-split 160",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_classifier.py --dataset-config configs/datasets/gait_phase_clean64.yaml --reference-jsonl artifacts/gait_phase_benchmark/0717_0719/reference_labels.jsonl --algorithm-family feature_tcn --window-seconds 3.0 --global-lag-ms 500 --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    }
+  ]
+}

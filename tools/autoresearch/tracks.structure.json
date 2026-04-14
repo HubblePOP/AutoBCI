@@ -2,14 +2,101 @@
   "review_cadence": "daily",
   "tracks": [
     {
-      "track_id": "canonical_mainline_feature_lstm",
-      "topic_id": "canonical_mainline",
-      "runner_family": "feature_lstm",
-      "track_goal": "Protect and improve the canonical joints mainline under the fixed promotion gate with feature-sequence LSTM decoders.",
+      "track_id": "feature_gru_mainline",
+      "topic_id": "wave1_autonomous",
+      "runner_family": "feature_gru",
+      "track_goal": "Use Hermes autonomous execution to test a strict-causal feature GRU mainline on the current joints target.",
       "promotion_target": "canonical_mainline",
       "internet_research_enabled": true,
-      "smoke_command": ".venv/bin/python scripts/train_feature_lstm.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints_smoke.yaml --epochs 4 --batch-size 64 --seed 0 --final-eval --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --target-axes xyz",
-      "formal_command": ".venv/bin/python scripts/train_feature_lstm.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints.yaml --epochs 12 --batch-size 64 --seed 0 --final-eval --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --target-axes xyz",
+      "smoke_command": ".venv/bin/python scripts/train_feature_gru.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints_smoke.yaml --epochs 4 --batch-size 64 --seed 0 --final-eval --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --target-axes xyz",
+      "formal_command": ".venv/bin/python scripts/train_feature_gru.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints.yaml --epochs 12 --batch-size 64 --seed 0 --final-eval --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --target-axes xyz",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features"
+      ],
+      "algorithm_family": "feature_gru",
+      "algorithm_label": "Feature GRU",
+      "method_variant_label": "Feature GRU",
+      "series_class": "mainline_brain",
+      "promotable": true,
+      "validated": true
+    },
+    {
+      "track_id": "feature_tcn_mainline",
+      "topic_id": "wave1_autonomous",
+      "runner_family": "feature_tcn",
+      "track_goal": "Use Hermes autonomous execution to test a strict-causal feature TCN mainline on the current joints target.",
+      "promotion_target": "canonical_mainline",
+      "internet_research_enabled": true,
+      "smoke_command": ".venv/bin/python scripts/train_feature_tcn.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints_smoke.yaml --epochs 4 --batch-size 64 --seed 0 --final-eval --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --target-axes xyz",
+      "formal_command": ".venv/bin/python scripts/train_feature_tcn.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints.yaml --epochs 12 --batch-size 64 --seed 0 --final-eval --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --target-axes xyz",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features"
+      ],
+      "algorithm_family": "feature_tcn",
+      "algorithm_label": "Feature TCN",
+      "method_variant_label": "Feature TCN",
+      "series_class": "mainline_brain",
+      "promotable": true,
+      "validated": true
+    },
+    {
+      "track_id": "phase_conditioned_feature_lstm",
+      "topic_id": "wave1_phase_state",
+      "runner_family": "feature_lstm",
+      "track_goal": "Probe whether phase-state conditioning improves continuity and hard-joint behavior for feature-sequence LSTMs.",
+      "promotion_target": "canonical_mainline",
+      "internet_research_enabled": true,
+      "smoke_command": ".venv/bin/python scripts/train_feature_lstm.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints_smoke.yaml --epochs 4 --batch-size 64 --seed 0 --final-eval --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power+phase_state --feature-reducers mean --signal-preprocess car_notch_bandpass --target-axes xyz",
+      "formal_command": ".venv/bin/python scripts/train_feature_lstm.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints.yaml --epochs 12 --batch-size 64 --seed 0 --final-eval --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power+phase_state --feature-reducers mean --signal-preprocess car_notch_bandpass --target-axes xyz",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features"
+      ]
+    },
+    {
+      "track_id": "phase_aware_xgboost",
+      "topic_id": "wave1_phase_state",
+      "runner_family": "tree_xgboost",
+      "track_goal": "Probe whether phase-state features help cheap tree models recover gain and lag on hard joints.",
+      "promotion_target": "canonical_mainline",
+      "internet_research_enabled": true,
+      "smoke_command": ".venv/bin/python scripts/train_tree_baseline.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints_smoke.yaml --epochs 1 --batch-size 0 --seed 0 --final-eval --feature-bin-ms 100.0 --feature-family lmp+hg_power+phase_state --feature-reducers mean --signal-preprocess car_notch_bandpass --model-family xgboost --xgb-n-estimators 128 --target-axes xyz",
+      "formal_command": ".venv/bin/python scripts/train_tree_baseline.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints.yaml --epochs 1 --batch-size 0 --seed 0 --final-eval --feature-bin-ms 100.0 --feature-family lmp+hg_power+phase_state --feature-reducers mean --signal-preprocess car_notch_bandpass --model-family xgboost --xgb-n-estimators 256 --target-axes xyz",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features"
+      ]
+    },
+    {
+      "track_id": "dmd_sdm_ridge",
+      "topic_id": "wave1_representation",
+      "runner_family": "ridge",
+      "track_goal": "Check whether DMD/sDM-style features are already useful with a cheap ridge decoder.",
+      "promotion_target": "canonical_mainline",
+      "internet_research_enabled": true,
+      "smoke_command": ".venv/bin/python scripts/train_ridge.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints_smoke.yaml --epochs 1 --batch-size 0 --seed 0 --final-eval --feature-bin-ms 100.0 --feature-family dmd_sdm --feature-reducers mean,abs_mean,rms --signal-preprocess car_notch_bandpass --ridge-alpha 1.0 --target-axes xyz",
+      "formal_command": ".venv/bin/python scripts/train_ridge.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints.yaml --epochs 1 --batch-size 0 --seed 0 --final-eval --feature-bin-ms 100.0 --feature-family dmd_sdm --feature-reducers mean,abs_mean,rms --signal-preprocess car_notch_bandpass --ridge-alpha 1.0 --target-axes xyz",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features"
+      ]
+    },
+    {
+      "track_id": "dmd_sdm_xgboost",
+      "topic_id": "wave1_representation",
+      "runner_family": "tree_xgboost",
+      "track_goal": "Check whether DMD/sDM features beat standard tree baselines without changing the promotion target.",
+      "promotion_target": "canonical_mainline",
+      "internet_research_enabled": true,
+      "smoke_command": ".venv/bin/python scripts/train_tree_baseline.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints_smoke.yaml --epochs 1 --batch-size 0 --seed 0 --final-eval --feature-bin-ms 100.0 --feature-family dmd_sdm --feature-reducers mean --signal-preprocess car_notch_bandpass --model-family xgboost --xgb-n-estimators 128 --target-axes xyz",
+      "formal_command": ".venv/bin/python scripts/train_tree_baseline.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints.yaml --epochs 1 --batch-size 0 --seed 0 --final-eval --feature-bin-ms 100.0 --feature-family dmd_sdm --feature-reducers mean --signal-preprocess car_notch_bandpass --model-family xgboost --xgb-n-estimators 256 --target-axes xyz",
       "allowed_change_scope": [
         "scripts",
         "src/bci_autoresearch/models",
@@ -32,14 +119,44 @@
       ]
     },
     {
-      "track_id": "relative_origin_xyz_feature_lstm",
-      "topic_id": "relative_origin_xyz",
-      "runner_family": "feature_lstm",
-      "track_goal": "Explore whether RSCA-relative xyz marker coordinates expose a better abstraction than direct joints targets with feature-sequence LSTM decoders.",
+      "track_id": "hybrid_brain_plus_kinematics",
+      "topic_id": "wave1_controls",
+      "runner_family": "tree_xgboost",
+      "track_goal": "Test whether combining brain features with kinematics history yields a clear gain over motion-only controls.",
       "promotion_target": "canonical_mainline",
       "internet_research_enabled": true,
-      "smoke_command": ".venv/bin/python scripts/train_feature_lstm.py --dataset-config configs/datasets/walk_matched_v1_64clean_rsca_relative_xyz.yaml --epochs 4 --batch-size 64 --seed 0 --final-eval --hidden-size 64 --num-layers 1 --patience 2 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --target-axes xyz --relative-origin-marker RSCA",
-      "formal_command": ".venv/bin/python scripts/train_feature_lstm.py --dataset-config configs/datasets/walk_matched_v1_64clean_rsca_relative_xyz.yaml --epochs 12 --batch-size 64 --seed 0 --final-eval --hidden-size 64 --num-layers 1 --patience 3 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --target-axes xyz --relative-origin-marker RSCA",
+      "smoke_command": ".venv/bin/python scripts/train_control_baseline.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints_smoke.yaml --epochs 1 --batch-size 0 --seed 0 --final-eval --feature-bin-ms 100.0 --history-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --control-mode hybrid --model-family xgboost --xgb-n-estimators 128 --target-axes xyz",
+      "formal_command": ".venv/bin/python scripts/train_control_baseline.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints.yaml --epochs 1 --batch-size 0 --seed 0 --final-eval --feature-bin-ms 100.0 --history-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --control-mode hybrid --model-family xgboost --xgb-n-estimators 256 --target-axes xyz",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features"
+      ]
+    },
+    {
+      "track_id": "kinematics_only_baseline",
+      "topic_id": "wave1_controls",
+      "runner_family": "tree_xgboost",
+      "track_goal": "Measure how far pure kinematics history alone can go before adding any brain features.",
+      "promotion_target": "canonical_mainline",
+      "internet_research_enabled": true,
+      "smoke_command": ".venv/bin/python scripts/train_control_baseline.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints_smoke.yaml --epochs 1 --batch-size 0 --seed 0 --final-eval --feature-bin-ms 100.0 --history-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --control-mode kinematics_only --model-family xgboost --xgb-n-estimators 128 --target-axes xyz",
+      "formal_command": ".venv/bin/python scripts/train_control_baseline.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints.yaml --epochs 1 --batch-size 0 --seed 0 --final-eval --feature-bin-ms 100.0 --history-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --control-mode kinematics_only --model-family xgboost --xgb-n-estimators 256 --target-axes xyz",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features"
+      ]
+    },
+    {
+      "track_id": "tree_calibration_catboost_or_extratrees",
+      "topic_id": "wave1_tree_calibration",
+      "runner_family": "tree_xgboost",
+      "track_goal": "Keep one cheap tree calibration branch alive while CatBoost is unavailable by using the extra-trees fallback.",
+      "promotion_target": "canonical_mainline",
+      "internet_research_enabled": true,
+      "smoke_command": ".venv/bin/python scripts/train_control_baseline.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints_smoke.yaml --epochs 1 --batch-size 0 --seed 0 --final-eval --feature-bin-ms 100.0 --history-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --control-mode hybrid --model-family extra_trees --rf-n-estimators 128 --target-axes xyz",
+      "formal_command": ".venv/bin/python scripts/train_control_baseline.py --dataset-config configs/datasets/walk_matched_v1_64clean_joints.yaml --epochs 1 --batch-size 0 --seed 0 --final-eval --feature-bin-ms 100.0 --history-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --control-mode hybrid --model-family extra_trees --rf-n-estimators 256 --target-axes xyz",
       "allowed_change_scope": [
         "scripts",
         "src/bci_autoresearch/models",

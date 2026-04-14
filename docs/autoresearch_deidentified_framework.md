@@ -2,6 +2,12 @@
 
 这份文档只说明 **结构和职责**，不包含真实运行状态、内存细节、实验结果、候选分数或回合记录。
 
+注意：
+
+- 这是一份**去敏后的框架说明**，不是当前控制面架构的 canonical 规格。
+- 当前 AutoBci Agent 的 topic / retrieval / decision / judgment 设计，请改读：
+  [2026-04-12_autobci_agent_thinking_control_plane_spec.md](/Users/mac/Code/AutoBci/docs/2026-04-12_autobci_agent_thinking_control_plane_spec.md)
+
 ## 1. 依赖层次
 
 AutoResearch 的配置和执行链路按下面的顺序理解：

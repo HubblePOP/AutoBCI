@@ -44,6 +44,7 @@ const DEFAULT_DATASET_NAME = "walk_matched_v1_64clean";
 const DEFAULT_SPLIT_SESSIONS = { train: 18, val: 2, test: 2 };
 const DEFAULT_AGENT_NAME = "restricted-autoresearch-codex-sdk";
 const DEFAULT_TARGET_MODE = "restricted-autoresearch";
+const AUTORESEARCH_PLANNER_REASONING_EFFORT = "medium";
 
 const ALLOWLIST = [
   /^scripts\/train_[^/]+\.py$/,
@@ -266,7 +267,11 @@ async function maybeRunCodexPlanner(record: IterationRecord, statusText: string)
     return null;
   }
 
-  const codex = new Codex();
+  const codex = new Codex({
+    config: {
+      model_reasoning_effort: AUTORESEARCH_PLANNER_REASONING_EFFORT,
+    },
+  });
   const priorThreadId = process.env.AUTORESEARCH_THREAD_ID?.trim();
   const thread = priorThreadId ? codex.resumeThread(priorThreadId) : codex.startThread();
   const prompt = [

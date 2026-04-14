@@ -2,6 +2,9 @@
 
 这个仓库现在用于承接当前这套 BCI 实验项目代码。
 
+- 仓库总纲：[`docs/CONSTITUTION.md`](docs/CONSTITUTION.md)
+- AutoResearch 去敏框架说明：[`docs/autoresearch_deidentified_framework.md`](docs/autoresearch_deidentified_framework.md)
+- AutoResearch 操作台入口：[`scripts/open_autoresearch_console.sh`](scripts/open_autoresearch_console.sh)
 - 项目来源：`/Volumes/Elements/bci/bci_codex_starter`
 - 当前实验状态入口：[`reports/2026-04-07/experiment_status.md`](reports/2026-04-07/experiment_status.md)
 - 当前已同步内容：
@@ -237,3 +240,19 @@ python scripts/train_lstm.py \
 - [/Volumes/Elements/bci/bci_codex_starter/tools/autoresearch/README.md](/Volumes/Elements/bci/bci_codex_starter/tools/autoresearch/README.md)
 
 它只接受受限范围里的训练脚本、模型、特征和 monitor 工件脚本，不碰 split、对齐、primary metric、`convert_session.py` 和原始路径。
+
+## 12. 宪法总纲与派生契约
+
+AutoResearch 现在有一层更上位的仓库总纲：
+
+- 仓库级唯一上位真源：[`docs/CONSTITUTION.md`](docs/CONSTITUTION.md)
+- 长期执行派生契约：[`tools/autoresearch/program.md`](tools/autoresearch/program.md)
+- 当前 campaign 附录：[`tools/autoresearch/program.current.md`](tools/autoresearch/program.current.md)
+
+如果改动触及 `gate`、对齐、搜索边界或 track 语义，不要只改 `program*.md` 或 runner；要同步检查总纲是否也需要更新。
+
+轻量防漂移检查：
+
+```bash
+git diff --name-only HEAD~1 | npm -C tools/autoresearch run check:constitution-sync
+```

@@ -14,6 +14,7 @@ class LSTMRegressor(nn.Module):
         dropout: float = 0.1,
     ) -> None:
         super().__init__()
+        self.readout_dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
         self.lstm = nn.LSTM(
             input_size=n_channels,
             hidden_size=hidden_size,
@@ -36,5 +37,5 @@ class LSTMRegressor(nn.Module):
         # x: (B, C, T) -> (B, T, C)
         x = x.transpose(1, 2)
         out, _ = self.lstm(x)
-        last = out[:, -1, :]
+        last = self.readout_dropout(out[:, -1, :])
         return self.head(last)

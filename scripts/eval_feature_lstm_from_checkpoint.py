@@ -22,7 +22,6 @@ import train_feature_lstm as feature_shared
 from bci_autoresearch.data.session_cache import load_session_cache
 from bci_autoresearch.data.runtime_splits import experiment_track_name, resolve_split_session_ids
 from bci_autoresearch.data.splits import load_dataset_config, scan_dataset_caches
-from bci_autoresearch.models.lstm_regressor import LSTMRegressor
 from bci_autoresearch.utils.device import get_device
 
 
@@ -122,7 +121,7 @@ def build_prediction_payload(
         "split_name": split_name,
         "feature_family": "+".join(str(item) for item in checkpoint["feature_families"]),
         "feature_reducers": list(checkpoint["feature_reducers"]),
-        "model_family": "feature_lstm",
+        "model_family": str(checkpoint.get("model_family", "feature_lstm")),
         "sessions": sessions_payload,
     }
 
@@ -143,12 +142,13 @@ def main() -> None:
     val_session_ids = resolve_split_session_ids(dataset, "val")
     test_session_ids = resolve_split_session_ids(dataset, "test")
 
-    model = LSTMRegressor(
+    model = feature_shared.build_feature_sequence_model(
+        model_family=str(checkpoint.get("model_family", "feature_lstm")),
         n_channels=int(checkpoint["x_mean"].shape[0]),
         n_outputs=len(target_names),
         hidden_size=int(checkpoint["hidden_size"]),
         num_layers=int(checkpoint["num_layers"]),
-        dropout=0.1,
+        dropout=float(checkpoint.get("dropout", 0.1)),
     ).to(device)
     model.load_state_dict(checkpoint["model_state"])
 
@@ -256,6 +256,7 @@ def main() -> None:
         "dataset_name": dataset.dataset_name,
         "dataset_config": str(Path(args.dataset_config).resolve()),
         "device": str(device),
+        "model_family": str(checkpoint.get("model_family", "feature_lstm")),
         "window_seconds": float(checkpoint["window_seconds"]),
         "window_samples": int(checkpoint["window_samples"]),
         "stride_samples": int(checkpoint["stride_samples"]),
@@ -295,7 +296,7 @@ def main() -> None:
             "max_lag_ms": float(dataset.lag_diagnostics.get("max_lag_ms", 1000.0)),
             "final_eval": bool(args.final_eval),
             "patience": None,
-            "model_family": "feature_lstm",
+            "model_family": str(checkpoint.get("model_family", "feature_lstm")),
             "feature_bin_ms": float(checkpoint["feature_bin_ms"]),
             "feature_reducers": list(checkpoint["feature_reducers"]),
             "signal_preprocess": str(checkpoint["signal_preprocess"]),

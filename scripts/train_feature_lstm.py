@@ -38,8 +38,99 @@ from bci_autoresearch.features import (
     parse_feature_families,
     slice_feature_window,
 )
+from bci_autoresearch.models.cnn_lstm_regressor import CNNLSTMRegressor
+from bci_autoresearch.models.conformer_lite_regressor import ConformerLiteRegressor
+from bci_autoresearch.models.gru_regressor import GRURegressor
 from bci_autoresearch.models.lstm_regressor import LSTMRegressor
+from bci_autoresearch.models.state_space_lite_regressor import StateSpaceLiteRegressor
+from bci_autoresearch.models.tcn_regressor import TCNRegressor
 from bci_autoresearch.utils.device import get_device
+from bci_autoresearch.utils.train_script_gates import (
+    normalize_artifact_probe,
+    validate_bin_size_ms,
+    write_preflight_payload,
+)
+
+
+FEATURE_SEQUENCE_MODEL_FAMILIES = (
+    "feature_lstm",
+    "feature_gru",
+    "feature_tcn",
+    "feature_cnn_lstm",
+    "feature_state_space_lite",
+    "feature_conformer_lite",
+)
+
+
+def normalize_model_family(raw_value: str) -> str:
+    model_family = str(raw_value).strip().lower()
+    if model_family not in FEATURE_SEQUENCE_MODEL_FAMILIES:
+        raise ValueError(
+            "Unsupported feature-sequence model family: "
+            f"{raw_value!r}. Expected one of {FEATURE_SEQUENCE_MODEL_FAMILIES}."
+        )
+    return model_family
+
+
+def build_feature_sequence_model(
+    *,
+    model_family: str,
+    n_channels: int,
+    n_outputs: int,
+    hidden_size: int,
+    num_layers: int,
+    dropout: float,
+) -> nn.Module:
+    family = normalize_model_family(model_family)
+    if family == "feature_lstm":
+        return LSTMRegressor(
+            n_channels=n_channels,
+            n_outputs=n_outputs,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout,
+        )
+    if family == "feature_gru":
+        return GRURegressor(
+            n_channels=n_channels,
+            n_outputs=n_outputs,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout,
+        )
+    if family == "feature_tcn":
+        return TCNRegressor(
+            n_channels=n_channels,
+            n_outputs=n_outputs,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout,
+        )
+    if family == "feature_cnn_lstm":
+        return CNNLSTMRegressor(
+            n_channels=n_channels,
+            n_outputs=n_outputs,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout,
+        )
+    if family == "feature_state_space_lite":
+        return StateSpaceLiteRegressor(
+            n_channels=n_channels,
+            n_outputs=n_outputs,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout,
+        )
+    if family == "feature_conformer_lite":
+        return ConformerLiteRegressor(
+            n_channels=n_channels,
+            n_outputs=n_outputs,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout,
+        )
+    raise AssertionError(f"Unhandled model family: {family}")
 
 
 class FeatureSessionWindowDataset(Dataset):
@@ -99,6 +190,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hidden-size", type=int, default=64)
     parser.add_argument("--num-layers", type=int, default=1)
     parser.add_argument("--dropout", type=float, default=0.1)
+    parser.add_argument(
+        "--model-family",
+        type=str,
+        default="feature_lstm",
+        choices=FEATURE_SEQUENCE_MODEL_FAMILIES,
+        help="feature-sequence model family to train",
+    )
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--patience", type=int, default=3)
     parser.add_argument("--feature-bin-ms", type=float, default=100.0)
@@ -107,12 +205,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--feature-family", type=str, default="simple_stats")
     parser.add_argument("--artifact-probe", type=str, default="none")
     parser.add_argument("--artifact-shift-seconds", type=float, default=10.0)
+    parser.add_argument("--preflight-only", action="store_true")
     return parser.parse_args()
 
 
 def parse_reducers(raw_value: str) -> tuple[str, ...]:
     reducers = tuple(part.strip() for part in raw_value.split(",") if part.strip())
     return normalize_reducers(reducers)
+
+
+def _write_preflight(path: Path, *, args: argparse.Namespace, target_names: list[str]) -> None:
+    write_preflight_payload(
+        path,
+        script_name="train_feature_lstm.py",
+        dataset_config=args.dataset_config,
+        target_names=target_names,
+        extra_fields={
+            "model_family": normalize_model_family(args.model_family),
+            "feature_family": args.feature_family,
+        },
+    )
 
 
 def summarize_session_qc(
@@ -519,6 +631,7 @@ def evaluate_split(
 
 def main() -> None:
     args = parse_args()
+    model_family = normalize_model_family(args.model_family)
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -535,6 +648,20 @@ def main() -> None:
     )
     target_dim_indices = target_spec.dim_indices
     target_kin_names = target_spec.dim_names
+    out_path = Path(args.output_json)
+    feature_bin_samples = validate_bin_size_ms(
+        fs_hz=reference_info.fs_ecog,
+        bin_ms=args.feature_bin_ms,
+        flag_name="--feature-bin-ms",
+    )
+    artifact_probe = normalize_artifact_probe(args.artifact_probe)
+    if args.preflight_only:
+        parse_reducers(args.feature_reducers)
+        normalize_signal_preprocess(args.signal_preprocess)
+        parse_feature_families(args.feature_family)
+        normalize_model_family(args.model_family)
+        _write_preflight(out_path, args=args, target_names=target_kin_names)
+        return
 
     device = get_device()
     window_seconds = (
@@ -554,15 +681,9 @@ def main() -> None:
     )
     max_lag_ms = float(dataset.lag_diagnostics.get("max_lag_ms", 1000.0))
     window_samples = int(round(window_seconds * reference_info.fs_ecog))
-    feature_bin_samples = int(round(reference_info.fs_ecog * args.feature_bin_ms / 1000.0))
     feature_reducers = parse_reducers(args.feature_reducers)
     signal_preprocess = normalize_signal_preprocess(args.signal_preprocess)
     feature_families = parse_feature_families(args.feature_family)
-    artifact_probe = str(args.artifact_probe).strip().lower()
-    if artifact_probe not in {"none", "session_center", "target_shuffle", "target_shift"}:
-        raise ValueError(
-            "--artifact-probe must be one of none, session_center, target_shuffle, target_shift."
-        )
     train_session_ids = resolve_split_session_ids(dataset, "train")
     val_session_ids = resolve_split_session_ids(dataset, "val")
     test_session_ids = resolve_split_session_ids(dataset, "test")
@@ -587,7 +708,8 @@ def main() -> None:
         seed=args.seed,
     )
 
-    model = LSTMRegressor(
+    model = build_feature_sequence_model(
+        model_family=model_family,
         n_channels=feature_channels,
         n_outputs=len(target_dim_indices),
         hidden_size=args.hidden_size,
@@ -598,7 +720,7 @@ def main() -> None:
     criterion = nn.MSELoss()
 
     default_stem = train_shared.default_run_stem(
-        f"{dataset.dataset_name}_feature_lstm",
+        f"{dataset.dataset_name}_{model_family}",
         target_spec,
         args.relative_origin_marker,
     )
@@ -615,7 +737,7 @@ def main() -> None:
     train_shared.save_checkpoint(
         {
             "mode": "dataset",
-            "model_family": "feature_lstm",
+            "model_family": model_family,
             "dataset_name": dataset.dataset_name,
             "dataset_config": str(Path(args.dataset_config).resolve()),
             "window_seconds": window_seconds,
@@ -631,6 +753,7 @@ def main() -> None:
             "artifact_shift_seconds": args.artifact_shift_seconds,
             "hidden_size": args.hidden_size,
             "num_layers": args.num_layers,
+            "dropout": args.dropout,
             "batch_size": args.batch_size,
             "lr": args.lr,
             "target_mode": target_spec.mode,
@@ -716,7 +839,7 @@ def main() -> None:
         train_shared.save_checkpoint(
             {
                 "mode": "dataset",
-                "model_family": "feature_lstm",
+                "model_family": model_family,
                 "dataset_name": dataset.dataset_name,
                 "dataset_config": str(Path(args.dataset_config).resolve()),
                 "window_seconds": window_seconds,
@@ -732,6 +855,7 @@ def main() -> None:
                 "artifact_shift_seconds": args.artifact_shift_seconds,
                 "hidden_size": args.hidden_size,
                 "num_layers": args.num_layers,
+                "dropout": args.dropout,
                 "batch_size": args.batch_size,
                 "lr": args.lr,
                 "target_mode": target_spec.mode,
@@ -763,7 +887,7 @@ def main() -> None:
             train_shared.save_checkpoint(
                 {
                     "mode": "dataset",
-                    "model_family": "feature_lstm",
+                    "model_family": model_family,
                     "dataset_name": dataset.dataset_name,
                     "dataset_config": str(Path(args.dataset_config).resolve()),
                     "window_seconds": window_seconds,
@@ -779,6 +903,7 @@ def main() -> None:
                     "artifact_shift_seconds": args.artifact_shift_seconds,
                     "hidden_size": args.hidden_size,
                     "num_layers": args.num_layers,
+                    "dropout": args.dropout,
                     "batch_size": args.batch_size,
                     "lr": args.lr,
                     "target_mode": target_spec.mode,
@@ -882,6 +1007,7 @@ def main() -> None:
         "target_axes": list(target_spec.axes),
         "relative_origin_marker": args.relative_origin_marker,
         "experiment_track": experiment_track_name(dataset),
+        "model_family": model_family,
         "best_checkpoint_path": str(best_checkpoint_path),
         "last_checkpoint_path": str(last_checkpoint_path),
         "primary_metric": "val_metrics.mean_pearson_r_zero_lag_macro",
@@ -894,6 +1020,7 @@ def main() -> None:
             "batch_size": args.batch_size,
             "hidden_size": args.hidden_size,
             "num_layers": args.num_layers,
+            "dropout": args.dropout,
             "lr": args.lr,
             "n_channels": reference_info.n_channels,
             "n_outputs": len(target_dim_indices),
@@ -910,7 +1037,6 @@ def main() -> None:
             "max_lag_ms": max_lag_ms,
             "final_eval": bool(args.final_eval),
             "patience": args.patience,
-            "model_family": "feature_lstm",
             "feature_bin_ms": args.feature_bin_ms,
             "feature_reducers": list(feature_reducers),
             "signal_preprocess": signal_preprocess,
@@ -918,6 +1044,7 @@ def main() -> None:
             "artifact_probe": artifact_probe,
             "artifact_shift_seconds": args.artifact_shift_seconds,
             "feature_channels": feature_channels,
+            "model_family": model_family,
         },
         "val_metrics": val_metrics,
         "qc": {
@@ -935,7 +1062,6 @@ def main() -> None:
     if test_metrics is not None:
         metrics["test_metrics"] = test_metrics
 
-    out_path = Path(args.output_json)
     print(json.dumps(metrics, indent=2, ensure_ascii=False))
     train_shared.save_metrics(metrics, out_path)
 

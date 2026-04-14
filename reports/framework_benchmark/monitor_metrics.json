@@ -1,0 +1,504 @@
+{
+  "total_iterations": 217,
+  "val_r_available": 157,
+  "time_span_hours": 2.62,
+  "iterations_per_hour": 82.68,
+  "direction_diversity": {
+    "unique_families": 10,
+    "unique_tracks": 33,
+    "unique_campaigns": 30,
+    "family_distribution": {
+      "xgboost": 94,
+      "lstm": 53,
+      "ridge": 26,
+      "unknown": 20,
+      "gru": 7,
+      "catboost": 6,
+      "tcn": 6,
+      "cnn_lstm": 3,
+      "state_space": 1,
+      "conformer": 1
+    },
+    "shannon_entropy": 2.3063,
+    "diversity_index": 0.6943
+  },
+  "breakthrough_efficiency": {
+    "breakthrough_count": 9,
+    "breakthrough_rate": 0.0573,
+    "cost_per_breakthrough": 17.44,
+    "final_best_val_r": 0.9728932678699493,
+    "breakthroughs": [
+      {
+        "index": 1,
+        "iteration": null,
+        "val_r": 0.008728819200769067,
+        "prev_best": null,
+        "improvement": 0.008728819200769067,
+        "recorded_at": "2026-04-05T05:30:24.884Z",
+        "track_id": "",
+        "algorithm_family": "unknown",
+        "decision": "continue"
+      },
+      {
+        "index": 2,
+        "iteration": 0,
+        "val_r": 0.03122794395312667,
+        "prev_best": 0.008728819200769067,
+        "improvement": 0.022499124752357602,
+        "recorded_at": "2026-04-05T07:52:20.665Z",
+        "track_id": "",
+        "algorithm_family": "unknown",
+        "decision": "baseline_initialized"
+      },
+      {
+        "index": 3,
+        "iteration": 1,
+        "val_r": 0.15738684218376875,
+        "prev_best": 0.03122794395312667,
+        "improvement": 0.12615889823064208,
+        "recorded_at": "2026-04-05T07:54:42.025Z",
+        "track_id": "",
+        "algorithm_family": "unknown",
+        "decision": "accept"
+      },
+      {
+        "index": 5,
+        "iteration": 1,
+        "val_r": 0.2254287856630981,
+        "prev_best": 0.15738684218376875,
+        "improvement": 0.06804194347932935,
+        "recorded_at": "2026-04-05T07:58:40.179Z",
+        "track_id": "",
+        "algorithm_family": "unknown",
+        "decision": "accept"
+      },
+      {
+        "index": 6,
+        "iteration": null,
+        "val_r": 0.4339177841320634,
+        "prev_best": 0.2254287856630981,
+        "improvement": 0.2084889984689653,
+        "recorded_at": "2026-04-06T19:50:22.000813",
+        "track_id": "",
+        "algorithm_family": "unknown",
+        "decision": "保留为对照"
+      },
+      {
+        "index": 89,
+        "iteration": 1,
+        "val_r": 0.4392969151958823,
+        "prev_best": 0.4339177841320634,
+        "improvement": 0.005379131063818932,
+        "recorded_at": "2026-04-08T10:27:37.936Z",
+        "track_id": "canonical_mainline_feature_lstm",
+        "algorithm_family": "lstm",
+        "decision": "hold_for_packet_gate"
+      },
+      {
+        "index": 144,
+        "iteration": 1,
+        "val_r": 0.9629662483930588,
+        "prev_best": 0.4392969151958823,
+        "improvement": 0.5236693331971765,
+        "recorded_at": "2026-04-09T04:10:57.925Z",
+        "track_id": "kinematics_only_baseline",
+        "algorithm_family": "xgboost",
+        "decision": "hold_for_packet_gate"
+      },
+      {
+        "index": 167,
+        "iteration": 2,
+        "val_r": 0.9699972718954086,
+        "prev_best": 0.9629662483930588,
+        "improvement": 0.0070310235023498535,
+        "recorded_at": "2026-04-10T14:25:34.121Z",
+        "track_id": "hybrid_brain_plus_kinematics",
+        "algorithm_family": "xgboost",
+        "decision": "smoke_not_better"
+      },
+      {
+        "index": 168,
+        "iteration": 2,
+        "val_r": 0.9728932678699493,
+        "prev_best": 0.9699972718954086,
+        "improvement": 0.0028959959745407104,
+        "recorded_at": "2026-04-10T14:26:28.305Z",
+        "track_id": "kinematics_only_baseline",
+        "algorithm_family": "xgboost",
+        "decision": "smoke_not_better"
+      }
+    ]
+  },
+  "stagnation": {
+    "max_dry_streak": 49,
+    "avg_dry_streak": 29.6,
+    "max_stagnation_hours": 0.0,
+    "dry_streaks": [
+      1,
+      40,
+      49,
+      15,
+      43
+    ]
+  },
+  "decision_quality": {
+    "decision_distribution": {
+      "hold_for_promotion_review": 40,
+      "smoke_not_better": 39,
+      "hold_for_packet_gate": 38,
+      "rollback_irrelevant_change": 33,
+      "baseline_initialized": 32,
+      "rollback_command_failed": 22,
+      "accept": 3,
+      "continue": 2,
+      "保留为对照": 2,
+      "reject_smoke_failed": 2,
+      "codex_failed": 2,
+      "继续验证": 1,
+      "rollback_scope_violation": 1
+    },
+    "rollback_count": 177,
+    "rollback_rate": 0.8157,
+    "relevance_distribution": {
+      "on_track": 88,
+      "unknown": 68,
+      "off_track_but_ran": 55,
+      "exploratory_but_indirect": 6
+    },
+    "on_track_rate": 0.4055
+  },
+  "resource_efficiency": {
+    "total_tool_items": 47,
+    "total_command_executions": 43,
+    "total_file_changes": 2,
+    "total_web_searches": 0,
+    "rows_with_tool_usage": 2,
+    "budget_distribution": {
+      "unknown": 215,
+      "healthy": 2
+    }
+  },
+  "stale_reason_codes": {},
+  "pivot_reason_codes": {
+    "formal_followup_available": 1
+  },
+  "campaign_summaries": [
+    {
+      "campaign_id": "autoresearch-campaign-1775615153582-ae787504",
+      "iterations": 3,
+      "families": {
+        "xgboost": 2,
+        "ridge": 1
+      },
+      "breakthroughs": 2,
+      "best_val_r": 0.2601544605426942
+    },
+    {
+      "campaign_id": "autoresearch-campaign-1775615207059-e8fad4e9",
+      "iterations": 3,
+      "families": {
+        "xgboost": 2,
+        "ridge": 1
+      },
+      "breakthroughs": 2,
+      "best_val_r": 0.2601544344374402
+    },
+    {
+      "campaign_id": "autoresearch-campaign-1775615225037-5543001d",
+      "iterations": 3,
+      "families": {
+        "xgboost": 2,
+        "ridge": 1
+      },
+      "breakthroughs": 2,
+      "best_val_r": 0.2601544605426942
+    },
+    {
+      "campaign_id": "autoresearch-campaign-1775615249906-81818a87",
+      "iterations": 3,
+      "families": {
+        "xgboost": 2,
+        "ridge": 1
+      },
+      "breakthroughs": 2,
+      "best_val_r": 0.26015443773940206
+    },
+    {
+      "campaign_id": "constitution-v1-dryrun",
+      "iterations": 1,
+      "families": {
+        "ridge": 1
+      },
+      "breakthroughs": 1,
+      "best_val_r": 0.3179927999153733
+    },
+    {
+      "campaign_id": "hermes-dryrun-check",
+      "iterations": 1,
+      "families": {
+        "xgboost": 1
+      },
+      "breakthroughs": 1,
+      "best_val_r": 0.4339177841320634
+    },
+    {
+      "campaign_id": "hermes-exec-feature-gru-feature-tcn-worktree-preflight",
+      "iterations": 21,
+      "families": {
+        "lstm": 3,
+        "gru": 2,
+        "tcn": 2,
+        "xgboost": 10,
+        "ridge": 2,
+        "catboost": 2
+      },
+      "breakthroughs": 7,
+      "best_val_r": 0.9728932678699493
+    },
+    {
+      "campaign_id": "joints-campaign-001",
+      "iterations": 2,
+      "families": {
+        "unknown": 2
+      },
+      "breakthroughs": 2,
+      "best_val_r": 0.15738684218376875
+    },
+    {
+      "campaign_id": "joints-campaign-002",
+      "iterations": 2,
+      "families": {
+        "unknown": 2
+      },
+      "breakthroughs": 2,
+      "best_val_r": 0.2254287856630981
+    },
+    {
+      "campaign_id": "main_campaign_question_queue_20260406",
+      "iterations": 1,
+      "families": {
+        "xgboost": 1
+      },
+      "breakthroughs": 1,
+      "best_val_r": 0.43290083948522806
+    },
+    {
+      "campaign_id": "manual",
+      "iterations": 5,
+      "families": {
+        "unknown": 5
+      },
+      "breakthroughs": 2,
+      "best_val_r": 0.4339177841320634
+    },
+    {
+      "campaign_id": "manual-auto-incubate-2026-04-13-incubation-feature-cnn-lstm",
+      "iterations": 2,
+      "families": {
+        "cnn_lstm": 2
+      },
+      "breakthroughs": 2,
+      "best_val_r": 0.4981607077643275
+    },
+    {
+      "campaign_id": "mission-test-r01",
+      "iterations": 1,
+      "families": {
+        "xgboost": 1
+      },
+      "breakthroughs": 1,
+      "best_val_r": 0.4339177841320634
+    },
+    {
+      "campaign_id": "moonshot-今晚-same-session-pure-brain-upper-bound-0-6-moonshot-广撒纯脑电家族做-ult",
+      "iterations": 13,
+      "families": {
+        "unknown": 1,
+        "lstm": 3,
+        "gru": 3,
+        "tcn": 3,
+        "cnn_lstm": 1,
+        "state_space": 1,
+        "conformer": 1
+      },
+      "breakthroughs": 4,
+      "best_val_r": 0.5072536359334158
+    },
+    {
+      "campaign_id": "overnight-2026-04-07-struct",
+      "iterations": 4,
+      "families": {
+        "xgboost": 1,
+        "unknown": 3
+      },
+      "breakthroughs": 1,
+      "best_val_r": 0.4339177841320634
+    },
+    {
+      "campaign_id": "overnight-2026-04-08-struct-r01",
+      "iterations": 1,
+      "families": {
+        "xgboost": 1
+      },
+      "breakthroughs": 1,
+      "best_val_r": 0.4339177841320634
+    },
+    {
+      "campaign_id": "overnight-2026-04-08-struct-r02",
+      "iterations": 1,
+      "families": {
+        "xgboost": 1
+      },
+      "breakthroughs": 1,
+      "best_val_r": 0.4339177841320634
+    },
+    {
+      "campaign_id": "overnight-2026-04-08-struct-r03",
+      "iterations": 12,
+      "families": {
+        "xgboost": 6,
+        "unknown": 6
+      },
+      "breakthroughs": 1,
+      "best_val_r": 0.4339177841320634
+    },
+    {
+      "campaign_id": "overnight-2026-04-08-struct-r04",
+      "iterations": 36,
+      "families": {
+        "xgboost": 12,
+        "ridge": 9,
+        "lstm": 15
+      },
+      "breakthroughs": 1,
+      "best_val_r": 0.4339177841320634
+    },
+    {
+      "campaign_id": "overnight-2026-04-08-struct-r05",
+      "iterations": 27,
+      "families": {
+        "xgboost": 12,
+        "ridge": 5,
+        "lstm": 10
+      },
+      "breakthroughs": 2,
+      "best_val_r": 0.4392969151958823
+    },
+    {
+      "campaign_id": "overnight-2026-04-08-struct-r06",
+      "iterations": 7,
+      "families": {
+        "lstm": 4,
+        "xgboost": 3
+      },
+      "breakthroughs": 3,
+      "best_val_r": 0.43479806650429964
+    },
+    {
+      "campaign_id": "overnight-2026-04-08-struct-r07",
+      "iterations": 12,
+      "families": {
+        "lstm": 7,
+        "xgboost": 5
+      },
+      "breakthroughs": 2,
+      "best_val_r": 0.4392969151958823
+    },
+    {
+      "campaign_id": "overnight-2026-04-08-struct-r08",
+      "iterations": 5,
+      "families": {
+        "xgboost": 3,
+        "lstm": 2
+      },
+      "breakthroughs": 3,
+      "best_val_r": 0.43290083948522806
+    },
+    {
+      "campaign_id": "overnight-2026-04-08-struct-r09",
+      "iterations": 5,
+      "families": {
+        "xgboost": 3,
+        "lstm": 2
+      },
+      "breakthroughs": 3,
+      "best_val_r": 0.43479806650429964
+    },
+    {
+      "campaign_id": "overnight-2026-04-08-struct-r10",
+      "iterations": 5,
+      "families": {
+        "xgboost": 3,
+        "lstm": 2
+      },
+      "breakthroughs": 2,
+      "best_val_r": 0.43479806650429964
+    },
+    {
+      "campaign_id": "overnight-2026-04-09-wave1-r01",
+      "iterations": 9,
+      "families": {
+        "xgboost": 5,
+        "unknown": 1,
+        "ridge": 1,
+        "lstm": 1,
+        "catboost": 1
+      },
+      "breakthroughs": 3,
+      "best_val_r": 0.9629662483930588
+    },
+    {
+      "campaign_id": "overnight-2026-04-10-wave1-r02",
+      "iterations": 2,
+      "families": {
+        "xgboost": 2
+      },
+      "breakthroughs": 2,
+      "best_val_r": 0.43440208304673433
+    },
+    {
+      "campaign_id": "overnight-2026-04-10-wave1-r03",
+      "iterations": 17,
+      "families": {
+        "lstm": 3,
+        "xgboost": 10,
+        "ridge": 2,
+        "catboost": 2
+      },
+      "breakthroughs": 6,
+      "best_val_r": 0.9728932678699493
+    },
+    {
+      "campaign_id": "overnight-2026-04-11-purebrain-r01",
+      "iterations": 11,
+      "families": {
+        "gru": 2,
+        "tcn": 1,
+        "lstm": 1,
+        "xgboost": 5,
+        "ridge": 1,
+        "catboost": 1
+      },
+      "breakthroughs": 5,
+      "best_val_r": 0.9629662483930588
+    },
+    {
+      "campaign_id": "phase1-genesis",
+      "iterations": 1,
+      "families": {
+        "xgboost": 1
+      },
+      "breakthroughs": 1,
+      "best_val_r": 0.4339177841320634
+    },
+    {
+      "campaign_id": "program-v1-dryrun",
+      "iterations": 1,
+      "families": {
+        "ridge": 1
+      },
+      "breakthroughs": 1,
+      "best_val_r": 0.3179927999153733
+    }
+  ]
+}
