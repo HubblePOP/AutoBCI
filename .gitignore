@@ -1,0 +1,32 @@
+.DS_Store
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# Data and artifacts (not for public repo)
+data/
+output/
+artifacts/
+configs/datasets/
+
+# Runtime and IDE
+.codex/
+.playwright-cli/
+.claude/
+
+# Node
+node_modules/
+tools/autoresearch/node_modules/
+tools/autoresearch/dist/
+tools/autoresearch/*.jsonl
+
+# Memory and personal context
+memory/
+
+# Sensitive
+*.env
+*.key
+*.pem

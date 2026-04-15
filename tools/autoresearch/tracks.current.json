@@ -1,0 +1,78 @@
+{
+  "tracks": [
+    {
+      "track_id": "relative_origin_xyz_ridge_replay",
+      "topic_id": "relative_origin_xyz",
+      "runner_family": "ridge",
+      "internet_research_enabled": false,
+      "track_goal": "用最简单的线性基线重建 `RSCA` 相对坐标结构线，确认这条 target 表征至少在线性层面稳定可学。",
+      "promotion_target": "relative_origin_xyz",
+      "smoke_command": ".venv/bin/python scripts/train_ridge.py --dataset-config configs/datasets/walk_matched_v1_64clean_rsca_relative_xyz.yaml --target-axes xyz --relative-origin-marker RSCA --seed 7 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --output-json artifacts/monitor/manual/relative_origin_xyz_ridge_replay_smoke.json --final-eval",
+      "formal_command": ".venv/bin/python scripts/train_ridge.py --dataset-config configs/datasets/walk_matched_v1_64clean_rsca_relative_xyz.yaml --target-axes xyz --relative-origin-marker RSCA --seed 7 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --output-json artifacts/monitor/manual/relative_origin_xyz_ridge_replay_formal.json --final-eval",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "relative_origin_xyz_xgboost_replay",
+      "topic_id": "relative_origin_xyz",
+      "runner_family": "xgboost",
+      "internet_research_enabled": false,
+      "track_goal": "用非线性树模型检查 `relative_origin_xyz` 是否比线性基线更能稳定承接脑电里的结构信息。",
+      "promotion_target": "relative_origin_xyz",
+      "smoke_command": ".venv/bin/python scripts/train_tree_baseline.py --dataset-config configs/datasets/walk_matched_v1_64clean_rsca_relative_xyz.yaml --model-family xgboost --target-axes xyz --relative-origin-marker RSCA --seed 7 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --output-json artifacts/monitor/manual/relative_origin_xyz_xgboost_replay_smoke.json --final-eval",
+      "formal_command": ".venv/bin/python scripts/train_tree_baseline.py --dataset-config configs/datasets/walk_matched_v1_64clean_rsca_relative_xyz.yaml --model-family xgboost --target-axes xyz --relative-origin-marker RSCA --seed 7 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --output-json artifacts/monitor/manual/relative_origin_xyz_xgboost_replay_formal.json --final-eval",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "relative_origin_xyz_feature_lstm_replay",
+      "topic_id": "relative_origin_xyz",
+      "runner_family": "feature_lstm",
+      "internet_research_enabled": false,
+      "track_goal": "复验这条结构线上已经出现过正信号的 `feature_lstm`，判断相对坐标是否真的更适合序列模型稳定学习。",
+      "promotion_target": "relative_origin_xyz",
+      "smoke_command": ".venv/bin/python scripts/train_feature_lstm.py --dataset-config configs/datasets/walk_matched_v1_64clean_rsca_relative_xyz.yaml --model-family feature_lstm --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --target-axes xyz --relative-origin-marker RSCA --seed 7 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --output-json artifacts/monitor/manual/relative_origin_xyz_feature_lstm_replay_smoke.json --final-eval",
+      "formal_command": ".venv/bin/python scripts/train_feature_lstm.py --dataset-config configs/datasets/walk_matched_v1_64clean_rsca_relative_xyz.yaml --model-family feature_lstm --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --target-axes xyz --relative-origin-marker RSCA --seed 7 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --output-json artifacts/monitor/manual/relative_origin_xyz_feature_lstm_replay_formal.json --final-eval",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "relative_origin_xyz_feature_gru_probe",
+      "topic_id": "relative_origin_xyz",
+      "runner_family": "feature_gru",
+      "internet_research_enabled": false,
+      "track_goal": "在结构线里加入一个新的轻量序列家族 `feature_gru`，判断相对坐标收益更像 target 表征优势，还是只对 LSTM 有利。",
+      "promotion_target": "relative_origin_xyz",
+      "smoke_command": ".venv/bin/python scripts/train_feature_lstm.py --dataset-config configs/datasets/walk_matched_v1_64clean_rsca_relative_xyz.yaml --model-family feature_gru --epochs 6 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 2 --target-axes xyz --relative-origin-marker RSCA --seed 7 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --output-json artifacts/monitor/manual/relative_origin_xyz_feature_gru_probe_smoke.json --final-eval",
+      "formal_command": ".venv/bin/python scripts/train_feature_lstm.py --dataset-config configs/datasets/walk_matched_v1_64clean_rsca_relative_xyz.yaml --model-family feature_gru --epochs 12 --batch-size 64 --hidden-size 64 --num-layers 1 --patience 3 --target-axes xyz --relative-origin-marker RSCA --seed 7 --feature-bin-ms 100.0 --feature-family lmp+hg_power --feature-reducers mean --signal-preprocess car_notch_bandpass --output-json artifacts/monitor/manual/relative_origin_xyz_feature_gru_probe_formal.json --final-eval",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/features",
+        "src/bci_autoresearch/eval"
+      ]
+    }
+  ],
+  "review_cadence": "hourly",
+  "director_generated": true,
+  "director_campaign_id": "director-1776218391",
+  "director_source_campaign_id": "director-1776212729",
+  "director_decision_source": "codex_sdk",
+  "director_top_3_track_ids": [
+    "relative_origin_xyz_ridge_replay",
+    "relative_origin_xyz_xgboost_replay",
+    "relative_origin_xyz_feature_lstm_replay"
+  ]
+}

@@ -1,0 +1,43 @@
+session_id: pig001_run001
+
+# Replace with your real files.
+# `intan_rhd` may point to either:
+# - a single traditional .rhd file
+# - a session directory that contains multiple sequential .rhd chunks
+intan_rhd: /ABSOLUTE/PATH/TO/your_recording.rhd
+
+# `vicon_csv` may point to either:
+# - a flat .csv export
+# - a Vicon .xlsx workbook with a trajectories sheet
+vicon_csv: /ABSOLUTE/PATH/TO/your_vicon_export.csv
+
+vicon:
+  # target_mode:
+  # - markers_xyz: use the first trajectories sheet
+  # - joints_sheet: use the second "joints" sheet with computed sagittal-plane angles
+  target_mode: markers_xyz
+
+  # Option A: direct time column in seconds
+  time_column: Time
+
+  # Option B: if your CSV has frame index instead of seconds,
+  # set time_column: null, frame_column: Frame, fps: <rate>
+  frame_column: null
+  fps: null
+
+  # For CSV input: map each joint name to 3 columns [X, Y, Z]
+  # For Vicon .xlsx input: either set `joints: null` to load all markers,
+  # or map each output name to a single marker name, e.g.
+  # joints:
+  #   pelvis: [RPEL]
+  joints:
+    lf_joint1: [LF_J1_X, LF_J1_Y, LF_J1_Z]
+    lf_joint2: [LF_J2_X, LF_J2_Y, LF_J2_Z]
+    rf_joint1: [RF_J1_X, RF_J1_Y, RF_J1_Z]
+    rf_joint2: [RF_J2_X, RF_J2_Y, RF_J2_Z]
+
+alignment:
+  # Positive means shift Vicon later on the eCOG clock.
+  lag_seconds: 0.0
+  crop_start_seconds: 0.0
+  crop_end_seconds: 0.0

@@ -1,0 +1,11 @@
+review_set_name: gait_phase_manual_spotcheck_v1
+sessions:
+  train:
+    - walk_20240717_01
+    - walk_20240719_01
+  val:
+    - walk_20240717_12
+    - walk_20240719_07
+  test:
+    - walk_20240717_16
+    - walk_20240719_10

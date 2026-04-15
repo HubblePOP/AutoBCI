@@ -1,0 +1,51 @@
+task_id: gait_phase_v1
+benchmark_name: carnese
+canonical_task: gait_phase_clean64
+canonical_metric: trial_usability_rate
+stage0_primary_metric: reference_trial_usability_rate
+
+data_boundary:
+  dataset_config: configs/datasets/gait_phase_clean64.yaml
+  smoke_dataset_config: configs/datasets/gait_phase_clean64_smoke.yaml
+  allowed_signals:
+    - RHTOE_z
+    - RFTOE_z
+  forbid_raw_data_edits: true
+  forbid_alignment_changes: true
+  forbid_split_changes: true
+
+timing_policy:
+  allow_fixed_global_lag: true
+  default_global_lag_ms: 0.0
+  forbid_per_trial_shift: true
+  forbid_posthoc_warping: true
+
+reference_labels:
+  method: extrema
+  generator: scripts/build_gait_phase_reference_labels.py
+  baseline_only: true
+  review_required_if_status_not_ok: true
+
+scoring:
+  script: scripts/run_gait_phase_label_engineering.py
+  primary_metric_field: reference_trial_usability_rate
+  ledger_primary_field: val_primary_metric
+  additional_metrics:
+    - coverage_breakdown
+    - manual_spotcheck_pass_rate
+    - boundary_stability_ms
+    - phase_stability_iou
+    - exception_counts
+    - reference_alignment
+
+manual_spotcheck:
+  manifest: benchmarks/carnese/tasks/gait_phase_v1/manual_spotcheck_sessions.yaml
+  review_template: benchmarks/carnese/tasks/gait_phase_v1/manual_spotcheck_review.template.json
+
+candidate_entrypoint:
+  path: benchmarks/carnese/tasks/gait_phase_v1/candidate_method.py
+  symbol: predict_session
+  allowed_change_scope:
+    - benchmarks/carnese/tasks/gait_phase_v1
+    - scripts
+    - src/bci_autoresearch/eval

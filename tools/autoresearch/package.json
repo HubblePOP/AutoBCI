@@ -1,0 +1,27 @@
+{
+  "name": "bci-autoresearch",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/run_iteration.ts",
+    "campaign": "tsx src/launch_campaign.ts",
+    "queue:compile": "tsx src/queue_compiler.ts",
+    "check:constitution-sync": "tsx src/check_constitution_sync.ts",
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/run_iteration.js",
+    "start:campaign": "node dist/launch_campaign.js",
+    "start:check:constitution-sync": "node dist/check_constitution_sync.js"
+  },
+  "dependencies": {
+    "@openai/codex-sdk": "^0.118.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
