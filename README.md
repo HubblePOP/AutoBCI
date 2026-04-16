@@ -18,9 +18,12 @@ AutoBCI is a research automation framework where two AI Agents collaborate to ru
 - They communicate through files — naturally persistent, observable, and crash-recoverable
 
 AutoBCI 是一个研究自动化框架，由两个 AI Agent 协作完成科学实验：
+Director 负责想：分析上一轮跑出来什么结果、为什么卡住了、下一步该往哪个方向走
+Executor 负责做：配环境、改代码、跑实验、把结果写回来
+两个 Agent 通过文件自动交接，晚上睡前启动，早上起来看结果
+比如昨晚：睡前布置了步态脑电二分类任务，写好 program.md，先跑了一轮 plain 模型，所有参数组合都在 57% 左右，基本等于随机猜。Director 自己判断出这条路不通，自动切到 attention 机制，Executor 一夜之间把准确率拉到了 73.7%。提升 16 个百分点，全程没有人工干预。
+系统已经跑了 800 多次自动实验，覆盖 12 个算法族。我们还在做一套叫 Carnese 的 benchmark，专门衡量研究harness框架自身的效率——多久能出一次突破、最长会卡多久、方向切换够不够多。
 
-- **Director** 分析上一轮结果、诊断瓶颈、决定下一步方向
-- **Executor** 配环境、改代码、跑实验、写回结果
 - 通过文件系统通信——天然持久、可观测、崩溃可恢复
 
 ## Recent result / 最近成果
@@ -64,11 +67,9 @@ autobci-agent supervise --director-enabled --foreground
 
 This project grew out of hands-on BCI work — craniotomy, electrode implantation, EEG acquisition, motion capture, and dataset creation for the China BCI Competition.
 
-这个项目源于一线的脑机接口工作——开颅手术、电极植入、脑电采集、运动捕捉，以及为中国脑机接口大赛制作数据集。
 
 Core insight: EEG signals are lossy observations of a perpetually drifting biological system. We need dynamic systems to counter dynamic reality.
 
-核心认知：脑电信号是对一个永恒漂移的生物系统的有损观测。我们只能以动态去制衡动态。
 
 ## License
 
