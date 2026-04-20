@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import argparse
+import json
+from pathlib import Path
+import shutil
+import sys
 from typing import Any
+from xml.etree import ElementTree as ET
+from zipfile import ZipFile
 
 import numpy as np
-
-
-@dataclass(frozen=True)
-class ToePhaseLabels:
-    signal_name: str
-    status: str
-    swing_intervals: list[tuple[int, int]]
-    exception_counts: dict[str, int]
 
 
 HYSTERESIS_REFERENCE_METHOD_FAMILY = "hysteresis_threshold"
@@ -34,6 +32,162 @@ REFERENCE_QUALITY_LIMITS = {
     "fore_hind_count_relative_diff": (0.0, 0.35),
     "short_swing_ratio": (0.0, 0.10),
 }
+
+XLSX_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+XLSX_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Standalone gait-phase label generator for selected Vicon .xlsx files.",
+    )
+    parser.add_argument("--input-xlsx", action="append", required=True, help="Vicon .xlsx path. Can be passed multiple times.")
+    parser.add_argument(
+        "--session-id",
+        action="append",
+        default=[],
+        help="Optional session id for each input. If omitted, the file stem is used.",
+    )
+    parser.add_argument("--output-jsonl", type=Path, required=True, help="Output JSONL path.")
+    parser.add_argument("--summary-json", type=Path, default=None, help="Optional summary JSON path.")
+    parser.add_argument(
+        "--reference-version",
+        type=str,
+        default="gait_phase_reference_collab_hysteresis_v1",
+        help="Reference version string written to summary.json.",
+    )
+    return parser.parse_args()
+
+
+def _xlsx_column_to_index(cell_ref: str) -> int:
+    col = 0
+    for ch in cell_ref:
+        if ch.isalpha():
+            col = col * 26 + (ord(ch.upper()) - ord("A") + 1)
+    return col - 1
+
+
+def _xlsx_cell_value(cell: ET.Element, shared_strings: list[str]) -> str:
+    cell_type = cell.attrib.get("t")
+    if cell_type == "inlineStr":
+        return "".join(t.text or "" for t in cell.iter(f"{{{XLSX_NS}}}t"))
+    value = cell.find(f"{{{XLSX_NS}}}v")
+    if value is None or value.text is None:
+        return ""
+    if cell_type == "s":
+        return shared_strings[int(value.text)]
+    return value.text
+
+
+def _load_shared_strings(zf: ZipFile) -> list[str]:
+    shared_strings_path = "xl/sharedStrings.xml"
+    if shared_strings_path not in zf.namelist():
+        return []
+    root = ET.fromstring(zf.read(shared_strings_path))
+    strings: list[str] = []
+    for item in root:
+        strings.append("".join(t.text or "" for t in item.iter(f"{{{XLSX_NS}}}t")))
+    return strings
+
+
+def _iter_xlsx_rows(zf: ZipFile, sheet_path: str, shared_strings: list[str]):
+    with zf.open(sheet_path) as sheet_fp:
+        for _, elem in ET.iterparse(sheet_fp, events=("end",)):
+            if elem.tag != f"{{{XLSX_NS}}}row":
+                continue
+            row_values: list[str] = []
+            last_col = -1
+            for cell in elem.findall(f"{{{XLSX_NS}}}c"):
+                ref = cell.attrib.get("r")
+                col_idx = _xlsx_column_to_index(ref) if ref else (last_col + 1)
+                while len(row_values) < col_idx:
+                    row_values.append("")
+                row_values.append(_xlsx_cell_value(cell, shared_strings))
+                last_col = col_idx
+            yield row_values
+            elem.clear()
+
+
+def _sheet_path_for_first_trajectory_sheet(zf: ZipFile) -> str:
+    rels_root = ET.fromstring(zf.read("xl/_rels/workbook.xml.rels"))
+    rel_map = {rel.attrib["Id"]: rel.attrib["Target"] for rel in rels_root}
+
+    workbook = ET.fromstring(zf.read("xl/workbook.xml"))
+    sheets = workbook.find(f"{{{XLSX_NS}}}sheets")
+    if sheets is None:
+        raise ValueError("Vicon workbook has no sheets.")
+
+    for sheet in sheets:
+        name = sheet.attrib.get("name", "")
+        rel_id = sheet.attrib.get(f"{{{XLSX_REL_NS}}}id")
+        if not rel_id:
+            continue
+        if name.lower() == "joints":
+            continue
+        target = rel_map[rel_id].lstrip("/")
+        return target if target.startswith("xl/") else f"xl/{target}"
+    raise ValueError("Could not find a trajectory sheet in Vicon workbook.")
+
+
+def _clean_marker_name(raw_name: str) -> str:
+    return raw_name.split(":")[-1].strip()
+
+
+def load_toe_signals_from_vicon_xlsx(xlsx_path: Path) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    with ZipFile(xlsx_path) as zf:
+        shared_strings = _load_shared_strings(zf)
+        sheet_path = _sheet_path_for_first_trajectory_sheet(zf)
+        rows = _iter_xlsx_rows(zf, sheet_path, shared_strings)
+        try:
+            next(rows)  # Trajectories
+            fps_row = next(rows)
+            marker_row = next(rows)
+            next(rows)  # Frame/Sub Frame/X/Y/Z
+            next(rows)  # Units
+        except StopIteration as exc:
+            raise ValueError(f"Incomplete Vicon workbook: {xlsx_path}") from exc
+
+        marker_names = [_clean_marker_name(value) for value in marker_row if value.strip()]
+        if not marker_names:
+            raise ValueError(f"No marker names found in Vicon workbook: {xlsx_path}")
+
+        frame_rate = float(fps_row[0])
+        expected_columns = 2 + 3 * len(marker_names)
+        wanted = {"RHTOE": None, "RFTOE": None}
+        for idx, marker_name in enumerate(marker_names):
+            if marker_name in wanted:
+                wanted[marker_name] = idx
+        missing = [name for name, idx in wanted.items() if idx is None]
+        if missing:
+            raise KeyError(f"Missing toe markers in workbook {xlsx_path}: {missing}")
+
+        frame_values: list[float] = []
+        rh_values: list[float] = []
+        rf_values: list[float] = []
+        for row in rows:
+            if not row:
+                continue
+            padded = row + [""] * max(0, expected_columns - len(row))
+            if not padded[0]:
+                continue
+            frame_values.append(float(padded[0]))
+            rh_offset = 2 + 3 * int(wanted["RHTOE"])
+            rf_offset = 2 + 3 * int(wanted["RFTOE"])
+            rh_raw = padded[rh_offset + 2]
+            rf_raw = padded[rf_offset + 2]
+            rh_values.append(np.nan if rh_raw == "" else float(rh_raw))
+            rf_values.append(np.nan if rf_raw == "" else float(rf_raw))
+
+    if not frame_values:
+        raise ValueError(f"No data rows found in Vicon workbook: {xlsx_path}")
+
+    frame = np.asarray(frame_values, dtype=np.float64)
+    time_s = (frame - frame[0]) / frame_rate
+    toe_signals = {
+        "RHTOE_z": np.asarray(rh_values, dtype=np.float32),
+        "RFTOE_z": np.asarray(rf_values, dtype=np.float32),
+    }
+    return time_s, toe_signals
 
 
 def _moving_average(signal: np.ndarray, window: int) -> np.ndarray:
@@ -76,105 +230,6 @@ def _filter_min_separation(indices: np.ndarray, signal: np.ndarray, *, min_separ
         if should_replace:
             kept[-1] = idx
     return np.asarray(kept, dtype=np.int64)
-
-
-def _build_interval_around_peak(
-    signal: np.ndarray,
-    *,
-    left_min: int,
-    peak_idx: int,
-    right_min: int,
-) -> tuple[int, int] | None:
-    peak_value = float(signal[peak_idx])
-    baseline = float(max(signal[left_min], signal[right_min]))
-    amplitude = peak_value - baseline
-    if amplitude <= 1e-6:
-        return None
-    threshold = baseline + amplitude * 0.35
-    window = signal[left_min : right_min + 1]
-    above = np.nonzero(window >= threshold)[0]
-    if above.size == 0:
-        return None
-    start_idx = left_min + int(above[0])
-    end_idx = left_min + int(above[-1]) + 1
-    if end_idx - start_idx < 2:
-        return None
-    return start_idx, end_idx
-
-
-def build_extrema_reference_labels(
-    *,
-    time_s: np.ndarray,
-    toe_z: np.ndarray,
-    signal_name: str,
-    smooth_window: int = 5,
-    min_separation_samples: int = 5,
-) -> dict[str, Any]:
-    time_s = np.asarray(time_s, dtype=np.float64)
-    toe_z = np.asarray(toe_z, dtype=np.float32)
-    if time_s.ndim != 1 or toe_z.ndim != 1 or time_s.shape[0] != toe_z.shape[0]:
-        raise ValueError("time_s and toe_z must be 1D arrays with the same length.")
-
-    smoothed = _moving_average(toe_z, smooth_window)
-    maxima = _filter_min_separation(
-        _find_local_extrema(smoothed, kind="max"),
-        smoothed,
-        min_separation_samples=min_separation_samples,
-        prefer="higher",
-    )
-    minima = _filter_min_separation(
-        _find_local_extrema(smoothed, kind="min"),
-        smoothed,
-        min_separation_samples=min_separation_samples,
-        prefer="lower",
-    )
-
-    exception_counts = {
-        "missing_extrema": 0,
-        "degenerate_interval": 0,
-        "unpaired_peak": 0,
-    }
-
-    if maxima.size == 0 or minima.size < 2:
-        exception_counts["missing_extrema"] += 1
-        return {
-            "signal_name": signal_name,
-            "status": "needs_review",
-            "swing_intervals": [],
-            "exception_counts": exception_counts,
-        }
-
-    swing_intervals: list[dict[str, int]] = []
-    for peak_idx in maxima.tolist():
-        left_candidates = minima[minima < peak_idx]
-        right_candidates = minima[minima > peak_idx]
-        if left_candidates.size == 0 or right_candidates.size == 0:
-            exception_counts["unpaired_peak"] += 1
-            continue
-        interval = _build_interval_around_peak(
-            smoothed,
-            left_min=int(left_candidates[-1]),
-            peak_idx=int(peak_idx),
-            right_min=int(right_candidates[0]),
-        )
-        if interval is None:
-            exception_counts["degenerate_interval"] += 1
-            continue
-        start_idx, end_idx = interval
-        if swing_intervals and start_idx <= swing_intervals[-1]["end_idx"]:
-            swing_intervals[-1]["end_idx"] = max(swing_intervals[-1]["end_idx"], end_idx)
-        else:
-            swing_intervals.append({"start_idx": start_idx, "end_idx": end_idx})
-
-    status = "ok" if swing_intervals else "needs_review"
-    if not swing_intervals:
-        exception_counts["missing_extrema"] += 1
-    return {
-        "signal_name": signal_name,
-        "status": status,
-        "swing_intervals": swing_intervals,
-        "exception_counts": exception_counts,
-    }
 
 
 def _infer_sample_rate_hz(time_s: np.ndarray) -> float:
@@ -288,7 +343,6 @@ def _split_overlong_intervals(
     maxima_idx: np.ndarray,
     minima_idx: np.ndarray,
     high_threshold: float,
-    low_threshold: float,
     support_floor_value: float,
     representative_cycle_samples: int | None,
     min_swing_samples: int,
@@ -450,10 +504,12 @@ def compute_hysteresis_reference_trace(
     )
     exception_counts["removed_short_swing"] += int(removed_after_support_merge)
 
+    local_maxima_idx = _find_local_extrema(smoothed, kind="max")
+    local_minima_idx = _find_local_extrema(smoothed, kind="min")
     raw_swing_intervals = _interval_dicts_from_mask(final_mask)
     representative_cycle_samples = _estimate_representative_cycle_samples(
         raw_swing_intervals,
-        _find_local_extrema(smoothed, kind="max"),
+        local_maxima_idx,
         smoothed,
         high_threshold=high_threshold,
         min_swing_samples=_ms_to_samples(min_swing_ms, sample_rate_hz, minimum=1),
@@ -462,10 +518,9 @@ def compute_hysteresis_reference_trace(
     swing_intervals, split_count = _split_overlong_intervals(
         raw_swing_intervals,
         smoothed=smoothed,
-        maxima_idx=_find_local_extrema(smoothed, kind="max"),
-        minima_idx=_find_local_extrema(smoothed, kind="min"),
+        maxima_idx=local_maxima_idx,
+        minima_idx=local_minima_idx,
         high_threshold=high_threshold,
-        low_threshold=low_threshold,
         support_floor_value=support_floor_value,
         representative_cycle_samples=representative_cycle_samples,
         min_swing_samples=_ms_to_samples(min_swing_ms, sample_rate_hz, minimum=1),
@@ -476,9 +531,6 @@ def compute_hysteresis_reference_trace(
     exception_counts["split_overlong_interval"] = int(split_count)
     if not swing_intervals:
         exception_counts["empty_after_filter"] = 1
-
-    local_maxima_idx = _find_local_extrema(smoothed, kind="max")
-    local_minima_idx = _find_local_extrema(smoothed, kind="min")
 
     return {
         "signal_name": signal_name,
@@ -514,29 +566,11 @@ def build_hysteresis_reference_labels(
     time_s: np.ndarray,
     toe_z: np.ndarray,
     signal_name: str,
-    high_q: float = float(HYSTERESIS_REFERENCE_METHOD_CONFIG["high_q"]),
-    low_q: float = float(HYSTERESIS_REFERENCE_METHOD_CONFIG["low_q"]),
-    smooth_window_ms: float = float(HYSTERESIS_REFERENCE_METHOD_CONFIG["smooth_window_ms"]),
-    min_swing_ms: float = float(HYSTERESIS_REFERENCE_METHOD_CONFIG["min_swing_ms"]),
-    min_support_ms: float = float(HYSTERESIS_REFERENCE_METHOD_CONFIG["min_support_ms"]),
-    merge_gap_ms: float = float(HYSTERESIS_REFERENCE_METHOD_CONFIG["merge_gap_ms"]),
-    split_long_swing_cycle_ratio: float = float(HYSTERESIS_REFERENCE_METHOD_CONFIG["split_long_swing_cycle_ratio"]),
-    split_peak_min_spacing_ratio: float = float(HYSTERESIS_REFERENCE_METHOD_CONFIG["split_peak_min_spacing_ratio"]),
-    split_valley_floor_ratio: float = float(HYSTERESIS_REFERENCE_METHOD_CONFIG["split_valley_floor_ratio"]),
 ) -> dict[str, Any]:
     trace = compute_hysteresis_reference_trace(
         time_s=time_s,
         toe_z=toe_z,
         signal_name=signal_name,
-        high_q=high_q,
-        low_q=low_q,
-        smooth_window_ms=smooth_window_ms,
-        min_swing_ms=min_swing_ms,
-        min_support_ms=min_support_ms,
-        merge_gap_ms=merge_gap_ms,
-        split_long_swing_cycle_ratio=split_long_swing_cycle_ratio,
-        split_peak_min_spacing_ratio=split_peak_min_spacing_ratio,
-        split_valley_floor_ratio=split_valley_floor_ratio,
     )
     return {
         "signal_name": signal_name,
@@ -594,88 +628,61 @@ def summarize_reference_label_quality(rows: list[dict[str, Any]]) -> dict[str, A
                     for start_idx, end_idx in intervals
                     if ((float(end_idx - start_idx) * 1000.0 / sample_rate_hz) < 80.0)
                 )
-                if len(intervals) >= 2:
-                    starts = np.asarray([start_idx for start_idx, _ in intervals], dtype=np.float64)
-                    step_period_s = np.diff(starts) / sample_rate_hz
-                    valid = step_period_s[np.isfinite(step_period_s) & (step_period_s > 0)]
-                    if valid.size > 0:
-                        per_session_cadence_hz.append(float(1.0 / np.median(valid)))
+                duration_s = float(n_samples) / sample_rate_hz if n_samples > 0 else 0.0
+                if duration_s > 0 and len(intervals) > 0:
+                    per_session_cadence_hz.append(float(len(intervals)) / duration_s)
 
-        swing_ratio = float(total_swing_samples / total_samples) if total_samples > 0 else 0.0
+        swing_ratio = (float(total_swing_samples) / float(total_samples)) if total_samples > 0 else 0.0
         median_swing_ms = float(np.median(np.asarray(swing_durations_ms, dtype=np.float64))) if swing_durations_ms else 0.0
         median_cadence_hz = float(np.median(np.asarray(per_session_cadence_hz, dtype=np.float64))) if per_session_cadence_hz else 0.0
-        short_swing_ratio = float(short_swing_count / interval_count) if interval_count > 0 else 0.0
+        short_swing_ratio = (float(short_swing_count) / float(interval_count)) if interval_count > 0 else 0.0
 
         signal_metrics[signal_name] = {
             "swing_ratio": swing_ratio,
             "median_swing_ms": median_swing_ms,
             "median_cadence_hz": median_cadence_hz,
             "short_swing_ratio": short_swing_ratio,
-            "swing_interval_count": int(interval_count),
-            "total_samples": int(total_samples),
+            "interval_count": interval_count,
         }
 
-        lower, upper = REFERENCE_QUALITY_LIMITS["swing_ratio"]
-        if not (lower <= swing_ratio <= upper):
+        lo, hi = REFERENCE_QUALITY_LIMITS["swing_ratio"]
+        if not (lo <= swing_ratio <= hi):
             quality_violations.append(
-                {
-                    "code": "swing_ratio_out_of_range",
-                    "signal_name": signal_name,
-                    "value": swing_ratio,
-                    "expected_range": [lower, upper],
-                    "message": f"{signal_name} 的摆动占比超出允许范围。",
-                }
+                {"signal_name": signal_name, "metric": "swing_ratio", "value": swing_ratio, "expected_range": [lo, hi]}
             )
-        lower, upper = REFERENCE_QUALITY_LIMITS["median_swing_ms"]
-        if not (lower <= median_swing_ms <= upper):
+        lo, hi = REFERENCE_QUALITY_LIMITS["median_swing_ms"]
+        if not (lo <= median_swing_ms <= hi):
             quality_violations.append(
-                {
-                    "code": "median_swing_ms_out_of_range",
-                    "signal_name": signal_name,
-                    "value": median_swing_ms,
-                    "expected_range": [lower, upper],
-                    "message": f"{signal_name} 的中位摆动时长不合理。",
-                }
+                {"signal_name": signal_name, "metric": "median_swing_ms", "value": median_swing_ms, "expected_range": [lo, hi]}
             )
-        lower, upper = REFERENCE_QUALITY_LIMITS["median_cadence_hz"]
-        if not (lower <= median_cadence_hz <= upper):
+        lo, hi = REFERENCE_QUALITY_LIMITS["median_cadence_hz"]
+        if not (lo <= median_cadence_hz <= hi):
             quality_violations.append(
-                {
-                    "code": "median_cadence_hz_out_of_range",
-                    "signal_name": signal_name,
-                    "value": median_cadence_hz,
-                    "expected_range": [lower, upper],
-                    "message": f"{signal_name} 的中位步频超出允许范围。",
-                }
+                {"signal_name": signal_name, "metric": "median_cadence_hz", "value": median_cadence_hz, "expected_range": [lo, hi]}
             )
-        lower, upper = REFERENCE_QUALITY_LIMITS["short_swing_ratio"]
-        if not (lower <= short_swing_ratio <= upper):
+        lo, hi = REFERENCE_QUALITY_LIMITS["short_swing_ratio"]
+        if not (lo <= short_swing_ratio <= hi):
             quality_violations.append(
-                {
-                    "code": "short_swing_ratio_out_of_range",
-                    "signal_name": signal_name,
-                    "value": short_swing_ratio,
-                    "expected_range": [lower, upper],
-                    "message": f"{signal_name} 的短摆动比例过高。",
-                }
+                {"signal_name": signal_name, "metric": "short_swing_ratio", "value": short_swing_ratio, "expected_range": [lo, hi]}
             )
 
     for row in rows:
         rh_intervals = _normalize_intervals(((row.get("toe_labels") or {}).get("RHTOE_z") or {}).get("swing_intervals"))
         rf_intervals = _normalize_intervals(((row.get("toe_labels") or {}).get("RFTOE_z") or {}).get("swing_intervals"))
-        denom = max(len(rh_intervals), len(rf_intervals), 1)
-        per_session_count_diffs.append(abs(len(rh_intervals) - len(rf_intervals)) / float(denom))
+        larger = max(len(rh_intervals), len(rf_intervals))
+        diff = abs(len(rh_intervals) - len(rf_intervals))
+        relative_diff = (float(diff) / float(larger)) if larger > 0 else 0.0
+        per_session_count_diffs.append(relative_diff)
 
-    fore_hind_count_relative_diff = float(max(per_session_count_diffs)) if per_session_count_diffs else 0.0
-    _, max_allowed = REFERENCE_QUALITY_LIMITS["fore_hind_count_relative_diff"]
-    if fore_hind_count_relative_diff > max_allowed:
+    fore_hind_count_relative_diff = float(np.median(np.asarray(per_session_count_diffs, dtype=np.float64))) if per_session_count_diffs else 0.0
+    lo, hi = REFERENCE_QUALITY_LIMITS["fore_hind_count_relative_diff"]
+    if not (lo <= fore_hind_count_relative_diff <= hi):
         quality_violations.append(
             {
-                "code": "fore_hind_count_relative_diff_out_of_range",
-                "signal_name": "RHTOE_z/RFTOE_z",
+                "signal_name": "pair",
+                "metric": "fore_hind_count_relative_diff",
                 "value": fore_hind_count_relative_diff,
-                "expected_range": [0.0, max_allowed],
-                "message": "前后肢步数差异过大，说明切分一致性不足。",
+                "expected_range": [lo, hi],
             }
         )
 
@@ -684,240 +691,78 @@ def summarize_reference_label_quality(rows: list[dict[str, Any]]) -> dict[str, A
         "quality_violations": quality_violations,
         "signal_metrics": signal_metrics,
         "fore_hind_count_relative_diff": fore_hind_count_relative_diff,
-        "session_count": len(rows),
     }
 
 
-def _intervals_to_mask(intervals: list[tuple[int, int]], *, n_samples: int) -> np.ndarray:
-    mask = np.zeros(int(n_samples), dtype=bool)
-    for start_idx, end_idx in intervals:
-        start = max(0, int(start_idx))
-        end = min(int(n_samples), int(end_idx))
-        if end > start:
-            mask[start:end] = True
-    return mask
-
-
-def _shift_intervals(intervals: list[tuple[int, int]], *, n_samples: int, global_lag_samples: int) -> list[tuple[int, int]]:
-    shifted: list[tuple[int, int]] = []
-    for start_idx, end_idx in intervals:
-        start = start_idx - global_lag_samples
-        end = end_idx - global_lag_samples
-        if end <= 0 or start >= n_samples:
-            continue
-        shifted.append((max(0, start), min(n_samples, end)))
-    return shifted
-
-
-def _event_error_ms(
-    reference_intervals: list[tuple[int, int]],
-    predicted_intervals: list[tuple[int, int]],
-    *,
-    sample_rate_hz: float,
-) -> float | None:
-    if not reference_intervals or not predicted_intervals:
-        return None
-    errors_ms: list[float] = []
-    for ref, pred in zip(reference_intervals, predicted_intervals):
-        errors_ms.append(abs(ref[0] - pred[0]) * 1000.0 / sample_rate_hz)
-        errors_ms.append(abs(ref[1] - pred[1]) * 1000.0 / sample_rate_hz)
-    if not errors_ms:
-        return None
-    return float(np.mean(np.asarray(errors_ms, dtype=np.float64)))
-
-
-def score_trial_prediction(
-    reference_record: dict[str, Any],
-    prediction_record: dict[str, Any],
-    *,
-    global_lag_samples: int = 0,
-    usability_iou_threshold: float = 0.5,
-) -> dict[str, Any]:
-    n_samples = int(reference_record["n_samples"])
-    sample_rate_hz = float(reference_record["sample_rate_hz"])
-    reference_toes = reference_record["toe_labels"]
-    prediction_toes = prediction_record["toe_labels"]
-
-    toe_scores: dict[str, Any] = {}
-    usable_flags: list[bool] = []
-    iou_values: list[float] = []
-    event_errors: list[float] = []
+def build_records(input_pairs: list[tuple[str, Path]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    status_counts: dict[str, int] = {}
     exception_counts: dict[str, int] = {}
-
-    for signal_name, reference_toe in reference_toes.items():
-        predicted_toe = prediction_toes.get(signal_name, {"status": "missing", "swing_intervals": [], "exception_counts": {"missing_prediction": 1}})
-        reference_intervals = _normalize_intervals(reference_toe.get("swing_intervals"))
-        predicted_intervals = _shift_intervals(
-            _normalize_intervals(predicted_toe.get("swing_intervals")),
-            n_samples=n_samples,
-            global_lag_samples=int(global_lag_samples),
-        )
-        reference_mask = _intervals_to_mask(reference_intervals, n_samples=n_samples)
-        predicted_mask = _intervals_to_mask(predicted_intervals, n_samples=n_samples)
-        union = int(np.logical_or(reference_mask, predicted_mask).sum())
-        intersection = int(np.logical_and(reference_mask, predicted_mask).sum())
-        phase_iou = float(intersection / union) if union > 0 else 0.0
-        usable = (
-            str(reference_toe.get("status", "ok")) == "ok"
-            and str(predicted_toe.get("status", "ok")) == "ok"
-            and bool(reference_intervals)
-            and bool(predicted_intervals)
-            and phase_iou >= usability_iou_threshold
-        )
-        event_error = _event_error_ms(
-            reference_intervals,
-            predicted_intervals,
-            sample_rate_hz=sample_rate_hz,
-        )
-        toe_scores[signal_name] = {
-            "usable": usable,
-            "phase_iou": phase_iou,
-            "event_error_ms": event_error,
-            "reference_interval_count": len(reference_intervals),
-            "predicted_interval_count": len(predicted_intervals),
-        }
-        usable_flags.append(usable)
-        iou_values.append(phase_iou)
-        if event_error is not None:
-            event_errors.append(event_error)
-        for source in (reference_toe.get("exception_counts"), predicted_toe.get("exception_counts")):
-            if not isinstance(source, dict):
-                continue
-            for key, value in source.items():
-                exception_counts[str(key)] = exception_counts.get(str(key), 0) + int(value or 0)
-
-    return {
-        "session_id": reference_record["session_id"],
-        "trial_usable": bool(usable_flags) and all(usable_flags),
-        "phase_iou_mean": float(np.mean(np.asarray(iou_values, dtype=np.float64))) if iou_values else 0.0,
-        "event_error_ms_mean": float(np.mean(np.asarray(event_errors, dtype=np.float64))) if event_errors else None,
-        "toe_scores": toe_scores,
-        "exception_counts": exception_counts,
-    }
-
-
-def aggregate_phase_scores(
-    session_scores: list[dict[str, Any]],
-    *,
-    dataset_name: str,
-    split_name: str,
-    global_lag_samples: int,
-    sample_rate_hz: float,
-) -> dict[str, Any]:
-    total_trials = len(session_scores)
-    usable_trials = sum(1 for score in session_scores if bool(score.get("trial_usable")))
-    trial_usability_rate = float(usable_trials / total_trials) if total_trials > 0 else 0.0
-    phase_iou_values = [float(score["phase_iou_mean"]) for score in session_scores if score.get("phase_iou_mean") is not None]
-    event_error_values = [float(score["event_error_ms_mean"]) for score in session_scores if score.get("event_error_ms_mean") is not None]
-    aggregated_exceptions: dict[str, int] = {}
-    for score in session_scores:
-        for key, value in dict(score.get("exception_counts") or {}).items():
-            aggregated_exceptions[str(key)] = aggregated_exceptions.get(str(key), 0) + int(value or 0)
-
-    return {
-        "dataset_name": dataset_name,
-        "target_mode": "gait_phase",
-        "target_space": "support_swing_phase",
-        "primary_metric": "trial_usability_rate",
-        f"{split_name}_primary_metric": trial_usability_rate,
-        "benchmark_primary_score": trial_usability_rate,
-        "val_r": trial_usability_rate,
-        "trial_usability_rate": trial_usability_rate,
-        "event_error_ms": float(np.mean(np.asarray(event_error_values, dtype=np.float64))) if event_error_values else None,
-        "phase_iou": float(np.mean(np.asarray(phase_iou_values, dtype=np.float64))) if phase_iou_values else 0.0,
-        "lag_distribution": {
-            "global_lag_samples": int(global_lag_samples),
-            "global_lag_ms": float(global_lag_samples) * 1000.0 / float(sample_rate_hz),
-        },
-        "exception_counts": aggregated_exceptions,
-        "trial_count": total_trials,
-        "usable_trial_count": usable_trials,
-    }
-
-
-def classify_trial_label_status(record: dict[str, Any]) -> str:
-    toe_labels = dict(record.get("toe_labels") or {})
-    if not toe_labels:
-        return "failed"
-
-    toe_states: list[str] = []
-    for toe in toe_labels.values():
-        status = str((toe or {}).get("status") or "needs_review")
-        intervals = _normalize_intervals((toe or {}).get("swing_intervals"))
-        if status == "ok" and intervals:
-            toe_states.append("ok")
-        else:
-            toe_states.append("failed" if not intervals else "needs_review")
-
-    if toe_states and all(state == "ok" for state in toe_states):
-        return "ok"
-    if toe_states and all(state == "failed" for state in toe_states):
-        return "failed"
-    return "needs_review"
-
-
-def summarize_label_records(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    split_names = ("train", "val", "test")
-    overall_counts = {"ok": 0, "needs_review": 0, "failed": 0}
-    overall_exceptions: dict[str, int] = {}
-    split_rows: dict[str, list[dict[str, Any]]] = {split: [] for split in split_names}
-
-    for row in rows:
-        split_name = str(row.get("split") or "unknown")
-        if split_name in split_rows:
-            split_rows[split_name].append(row)
-        status = classify_trial_label_status(row)
-        overall_counts[status] = overall_counts.get(status, 0) + 1
-        for toe in dict(row.get("toe_labels") or {}).values():
-            for key, value in dict((toe or {}).get("exception_counts") or {}).items():
-                overall_exceptions[str(key)] = overall_exceptions.get(str(key), 0) + int(value or 0)
-
-    def build_coverage(counts: dict[str, int], total: int) -> dict[str, dict[str, float | int]]:
-        return {
-            key: {
-                "count": int(counts.get(key, 0)),
-                "rate": float(counts.get(key, 0) / total) if total > 0 else 0.0,
+    for session_id, xlsx_path in input_pairs:
+        time_s, toe_signals = load_toe_signals_from_vicon_xlsx(xlsx_path)
+        toe_labels: dict[str, Any] = {}
+        for signal_name, toe_z in toe_signals.items():
+            labels = build_hysteresis_reference_labels(
+                time_s=np.asarray(time_s, dtype=np.float64),
+                toe_z=np.asarray(toe_z, dtype=np.float32),
+                signal_name=signal_name,
+            )
+            toe_labels[signal_name] = labels
+            status_counts[labels["status"]] = status_counts.get(labels["status"], 0) + 1
+            for key, value in labels["exception_counts"].items():
+                exception_counts[key] = exception_counts.get(key, 0) + int(value or 0)
+        rows.append(
+            {
+                "session_id": session_id,
+                "n_samples": int(time_s.shape[0]),
+                "sample_rate_hz": _infer_sample_rate_hz(np.asarray(time_s, dtype=np.float64)),
+                "toe_labels": toe_labels,
             }
-            for key in ("ok", "needs_review", "failed")
-        }
-
-    def summarize_split(split_name: str, split_rows_local: list[dict[str, Any]]) -> dict[str, Any]:
-        counts = {"ok": 0, "needs_review": 0, "failed": 0}
-        exceptions: dict[str, int] = {}
-        for row in split_rows_local:
-            status = classify_trial_label_status(row)
-            counts[status] = counts.get(status, 0) + 1
-            for toe in dict(row.get("toe_labels") or {}).values():
-                for key, value in dict((toe or {}).get("exception_counts") or {}).items():
-                    exceptions[str(key)] = exceptions.get(str(key), 0) + int(value or 0)
-        total = len(split_rows_local)
-        ok_count = counts.get("ok", 0)
-        return {
-            "split": split_name,
-            "trial_count": total,
-            "usable_trial_count": ok_count,
-            "reference_trial_usability_rate": float(ok_count / total) if total > 0 else 0.0,
-            "coverage_breakdown": build_coverage(counts, total),
-            "exception_counts": exceptions,
-        }
-
-    split_metrics = {
-        split_name: summarize_split(split_name, split_rows[split_name])
-        for split_name in split_names
+        )
+    return rows, {
+        "status_counts": status_counts,
+        "exception_counts": exception_counts,
+        "quality_summary": summarize_reference_label_quality(rows),
     }
-    total_trials = len(rows)
-    usable_trials = overall_counts.get("ok", 0)
-    val_primary_metric = float(split_metrics["val"]["reference_trial_usability_rate"])
-    test_primary_metric = float(split_metrics["test"]["reference_trial_usability_rate"])
-    return {
-        "primary_metric": "reference_trial_usability_rate",
-        "reference_trial_usability_rate": float(usable_trials / total_trials) if total_trials > 0 else 0.0,
-        "benchmark_primary_score": val_primary_metric,
-        "val_primary_metric": val_primary_metric,
-        "test_primary_metric": test_primary_metric,
-        "trial_count": total_trials,
-        "usable_trial_count": usable_trials,
-        "coverage_breakdown": build_coverage(overall_counts, total_trials),
-        "exception_counts": overall_exceptions,
-        "split_metrics": split_metrics,
+
+
+def resolve_input_pairs(args: argparse.Namespace) -> list[tuple[str, Path]]:
+    input_paths = [Path(item).expanduser().resolve() for item in args.input_xlsx]
+    if len(args.session_id) not in (0, len(input_paths)):
+        raise ValueError("--session-id count must be 0 or match --input-xlsx count.")
+    session_ids = list(args.session_id) if args.session_id else [path.stem for path in input_paths]
+    pairs = list(zip(session_ids, input_paths, strict=True))
+    missing = [str(path) for _, path in pairs if not path.exists()]
+    if missing:
+        raise FileNotFoundError(f"Missing input xlsx files: {missing}")
+    return [(session_id, path) for session_id, path in pairs]
+
+
+def main() -> None:
+    args = parse_args()
+    input_pairs = resolve_input_pairs(args)
+    rows, aux = build_records(input_pairs)
+    summary = {
+        "reference_version": str(args.reference_version),
+        "reference_method_family": HYSTERESIS_REFERENCE_METHOD_FAMILY,
+        "reference_method_config": dict(HYSTERESIS_REFERENCE_METHOD_CONFIG),
+        "session_count": len(rows),
+        "session_ids": [session_id for session_id, _ in input_pairs],
+        "status_counts": dict(aux["status_counts"]),
+        "exception_counts": dict(aux["exception_counts"]),
+        "quality_status": str((aux["quality_summary"] or {}).get("quality_status") or "failed"),
+        "quality_summary": dict(aux["quality_summary"]),
     }
+
+    args.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    with args.output_jsonl.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    if args.summary_json:
+        args.summary_json.parent.mkdir(parents=True, exist_ok=True)
+        args.summary_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()

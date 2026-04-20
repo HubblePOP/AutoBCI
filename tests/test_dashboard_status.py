@@ -2809,18 +2809,36 @@ class DashboardStatusTests(unittest.TestCase):
             "runtime_state": {"mission_id": "overnight-2026-04-11-purebrain", "runtime_status": "running"},
             "topics": [{"topic_id": "same_session_pure_brain_moonshot", "status": "running", "priority": 1.0}],
             "latest_decision_packet": {
+                "recorded_at": "2026-04-11T02:10:00Z",
                 "recommended_queue": ["feature_gru_mainline", "feature_tcn_mainline"],
                 "recommended_formal_candidates": ["feature_gru_mainline"],
                 "research_judgment_delta": "继续优先纯脑电突破。",
             },
             "latest_retrieval_packet": {
+                "recorded_at": "2026-04-11T02:00:00Z",
                 "current_problem_statement": "今晚切到同试次纯脑电 moonshot。",
                 "relevant_evidence": [{"evidence_id": "e1"}, {"evidence_id": "e2"}],
             },
-            "latest_judgment_updates": [{"topic_id": "same_session_pure_brain_moonshot", "queue_update": "keep_active"}],
+            "latest_judgment_updates": [{
+                "recorded_at": "2026-04-11T02:20:00Z",
+                "topic_id": "same_session_pure_brain_moonshot",
+                "queue_update": "keep_active",
+                "reason": "继续优先纯脑电突破。",
+                "next_recommended_action": "先把 feature_gru_mainline 跑起来。",
+            }],
         }
 
-        payload = build_mission_control_payload(snapshot, recent_control_events=[{"action": "think", "ok": True}])
+        payload = build_mission_control_payload(
+            snapshot,
+            recent_control_events=[
+                {
+                    "recorded_at": "2026-04-11T02:25:00Z",
+                    "action": "execute",
+                    "ok": True,
+                    "message": "开始执行 feature_gru_mainline。",
+                }
+            ],
+        )
 
         self.assertEqual(payload["current_problem"], "今晚切到同试次纯脑电 moonshot。")
         self.assertEqual(payload["current_task"], "今晚 same-session pure-brain upper-bound 0.6 moonshot")
@@ -2830,9 +2848,14 @@ class DashboardStatusTests(unittest.TestCase):
         self.assertEqual(payload["recommended_formal_candidates"], ["feature_gru_mainline"])
         self.assertEqual(payload["available_actions"], ["think", "execute", "pause", "resume", "end"])
         self.assertEqual(payload["latest_retrieval_summary"]["evidence_count"], 2)
-        self.assertEqual(payload["recent_control_events"][0]["action"], "think")
-        self.assertEqual([item["role"] for item in payload["thinking_trace"]], ["Thinker", "Planner", "Worker", "Materializer", "Judgment"])
-        self.assertIn("纯脑电", payload["thinking_trace"][0]["summary"])
+        self.assertEqual(payload["recent_control_events"][0]["action"], "execute")
+        self.assertEqual(
+            [item["role"] for item in payload["interaction_history"][:4]],
+            ["Executor", "Director", "Director", "Research Memory"],
+        )
+        self.assertEqual(payload["interaction_history"][0]["title"], "执行队列动作")
+        self.assertIn("feature_gru_mainline", payload["interaction_history"][0]["detail"])
+        self.assertEqual(payload["thinking_trace"], payload["interaction_history"])
         self.assertEqual(
             [item["id"] for item in payload["pipeline_status"]["stages"]],
             ["topics", "retrieval", "decision", "queue", "worker"],
@@ -2947,10 +2970,11 @@ class DashboardStatusTests(unittest.TestCase):
         self.assertEqual(payload["topic_observability"][0]["materialization_state_label"], "已 smoke")
         self.assertEqual(payload["topic_observability"][0]["age_label"], "20 分钟前")
         self.assertIn("queue_unchanged", payload["topic_observability"][1]["chips"])
-        self.assertEqual(
-            [item["role"] for item in payload["thinking_trace"]],
-            ["Thinker", "Planner", "Worker", "Materializer", "Judgment"],
-        )
+        self.assertIn("interaction_history", payload)
+        self.assertGreaterEqual(len(payload["interaction_history"]), 4)
+        self.assertEqual(payload["interaction_history"][0]["role"], "Research Memory")
+        self.assertEqual(payload["interaction_history"][1]["role"], "Director")
+        self.assertEqual(payload["interaction_history"][-1]["role"], "Executor")
 
     def test_build_mission_control_payload_surfaces_automation_state_and_recommended_incubation(self) -> None:
         snapshot = {
@@ -3019,11 +3043,20 @@ class DashboardStatusTests(unittest.TestCase):
             payload["active_incubation_campaigns"][0]["campaign_id"],
             "mission-001-incubation-feature-cnn-lstm",
         )
-        self.assertIn("当前 topic 1 个", payload["thinking_trace"][0]["detail"])
-        self.assertIn("feature_gru_mainline", payload["thinking_trace"][1]["detail"])
-        self.assertIn("materialized_pending_smoke", payload["thinking_trace"][3]["detail"])
+        self.assertEqual(payload["interaction_history"][0]["role"], "Director")
+        self.assertIn("feature_gru_mainline", payload["interaction_history"][0]["result"])
+        self.assertEqual(payload["interaction_history"][-1]["role"], "Executor")
+        self.assertIn("exploration", payload["interaction_history"][-1]["result"])
         self.assertEqual(payload["pipeline_status"]["stages"][2]["summary"], "主线已停滞，转去自动孵化 CNN-LSTM 探针。")
         self.assertEqual(payload["pipeline_status"]["stages"][3]["count"], 1)
+
+    def test_dashboard_index_supports_snapshot_mode_and_real_interaction_history(self) -> None:
+        html = Path("/Users/mac/Code/AutoBci/dashboard/index.html").read_text()
+
+        self.assertIn("status.snapshot.json", html)
+        self.assertIn("interaction_history", html)
+        self.assertIn("当前显示的是只读快照", html)
+        self.assertIn("renderThinkingTimeline", html)
 
     def test_control_event_log_round_trip_returns_latest_first(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

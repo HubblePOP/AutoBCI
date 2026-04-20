@@ -6,7 +6,7 @@ import random
 from dataclasses import dataclass
 from pathlib import Path
 import sys
-from typing import Any
+from typing import Any, Iterable
 
 import numpy as np
 import torch
@@ -108,6 +108,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset-config", required=True)
     parser.add_argument("--reference-jsonl", required=True)
+    parser.add_argument("--reference-version", type=str, default="gait_phase_reference_provisional_v1_0717_0719")
     parser.add_argument("--algorithm-family", required=True, choices=ALGORITHM_FAMILIES)
     parser.add_argument("--output-json", required=True)
     parser.add_argument("--window-seconds", type=float, required=True)
@@ -157,15 +158,104 @@ def _aligned_window_samples(*, fs_hz: float, window_seconds: float, bin_samples:
 
 def _aligned_lag_samples(*, fs_hz: float, lag_ms: float, bin_samples: int) -> int:
     raw_samples = int(round(float(lag_ms) * float(fs_hz) / 1000.0))
-    if raw_samples <= 0:
+    if raw_samples == 0:
         return 0
-    return (raw_samples // int(bin_samples)) * int(bin_samples)
+    aligned = (abs(raw_samples) // int(bin_samples)) * int(bin_samples)
+    if aligned <= 0:
+        return 0
+    return aligned if raw_samples > 0 else -aligned
 
 
 def _sample_records_to_arrays(records: list[SampleRecord], windows: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
     x = np.stack(windows, axis=0).astype(np.float32)
     y = np.asarray([record.label_index for record in records], dtype=np.int64)
     return x, y
+
+
+def _summarize_label_layer(
+    *,
+    reference_records: dict[str, dict[str, Any]],
+    session_ids: Iterable[str],
+    signal_names: tuple[str, ...],
+) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for session_id in sorted({str(item) for item in session_ids}):
+        record = reference_records.get(session_id)
+        if not isinstance(record, dict):
+            continue
+        n_samples = int(record.get("n_samples") or 0)
+        toe_labels = dict(record.get("toe_labels") or {})
+        session_summary: dict[str, Any] = {}
+        for signal_name in signal_names:
+            payload = dict(toe_labels.get(signal_name) or {})
+            intervals = payload.get("swing_intervals") or []
+            swing_samples = sum(
+                max(0, int(item.get("end_idx") or 0) - int(item.get("start_idx") or 0))
+                for item in intervals
+                if isinstance(item, dict)
+            )
+            exception_counts = dict(payload.get("exception_counts") or {})
+            session_summary[signal_name] = {
+                "status": str(payload.get("status") or ""),
+                "swing_ratio": (float(swing_samples) / float(n_samples)) if n_samples > 0 else None,
+                "swing_interval_count": int(len(intervals)),
+                "degenerate_interval_count": int(exception_counts.get("degenerate_interval") or 0),
+                "missing_extrema_count": int(exception_counts.get("missing_extrema") or 0),
+                "unpaired_peak_count": int(exception_counts.get("unpaired_peak") or 0),
+            }
+        summary[session_id] = session_summary
+    return summary
+
+
+def _summarize_x_windows(records: list[SampleRecord]) -> dict[str, Any]:
+    if not records:
+        return {
+            "x_start_min": None,
+            "x_start_max": None,
+            "x_end_min": None,
+            "x_end_max": None,
+            "unique_window_lengths": [],
+        }
+    x_starts = [int(record.x_start) for record in records]
+    x_ends = [int(record.x_end) for record in records]
+    window_lengths = sorted({int(record.x_end - record.x_start) for record in records})
+    return {
+        "x_start_min": int(min(x_starts)),
+        "x_start_max": int(max(x_starts)),
+        "x_end_min": int(min(x_ends)),
+        "x_end_max": int(max(x_ends)),
+        "unique_window_lengths": window_lengths,
+    }
+
+
+def _summarize_eeg_sample_layer(records: list[SampleRecord]) -> dict[str, Any]:
+    per_session: dict[str, Any] = {}
+    for record in records:
+        session_entry = per_session.setdefault(
+            record.session_id,
+            {
+                "support_sample_count": 0,
+                "swing_sample_count": 0,
+                "signal_counts": {},
+                "x_start_min": None,
+                "x_start_max": None,
+                "x_end_min": None,
+                "x_end_max": None,
+            },
+        )
+        label_key = "support_sample_count" if int(record.label_index) == 0 else "swing_sample_count"
+        session_entry[label_key] += 1
+        signal_counts = session_entry["signal_counts"]
+        signal_counts[record.signal_name] = int(signal_counts.get(record.signal_name, 0)) + 1
+        for key, value, reducer in (
+            ("x_start_min", int(record.x_start), min),
+            ("x_start_max", int(record.x_start), max),
+            ("x_end_min", int(record.x_end), min),
+            ("x_end_max", int(record.x_end), max),
+        ):
+            current = session_entry[key]
+            session_entry[key] = value if current is None else reducer(int(current), value)
+    return per_session
 
 
 def _subsample_records(
@@ -236,9 +326,11 @@ def build_split_samples(
             split_by_session[session_id] = split_name
     bin_samples: int | None = None
     lag_samples: int | None = None
+    base_fs_hz: float | None = None
 
     split_records: dict[str, list[SampleRecord]] = {name: [] for name in ("train", "val", "test")}
     split_windows: dict[str, list[np.ndarray]] = {name: [] for name in ("train", "val", "test")}
+    anchor_layer_summary: dict[str, Any] = {}
     anchor_summary: dict[str, Any] = {
         "reference_sessions": sorted(reference_records),
         "usable_sessions": [],
@@ -262,6 +354,7 @@ def build_split_samples(
         if bin_samples is None:
             bin_samples = current_bin_samples
             lag_samples = _aligned_lag_samples(fs_hz=cache.fs_ecog, lag_ms=global_lag_ms, bin_samples=bin_samples)
+            base_fs_hz = float(cache.fs_ecog)
         feature_sequence = build_feature_sequence(
             ecog_uV=cache.ecog_uV,
             channel_names=cache.channel_names,
@@ -276,6 +369,10 @@ def build_split_samples(
             window_seconds=window_seconds,
             bin_samples=current_bin_samples,
         )
+        if current_bin_samples != int(bin_samples):
+            raise RuntimeError("Mixed feature-bin sample counts across sessions are not supported for gait phase EEG classification.")
+        if window_samples <= 0:
+            raise RuntimeError("Effective window size collapsed to zero after alignment.")
         reference_fs_hz = float(record.get("sample_rate_hz") or cache.fs_ecog)
         anchors = collect_phase_anchor_records(
             record,
@@ -285,9 +382,20 @@ def build_split_samples(
         )
         if anchors:
             anchor_summary["usable_sessions"].append(session_id)
+        session_anchor_summary = anchor_layer_summary.setdefault(
+            session_id,
+            {
+                "support_anchor_count": 0,
+                "swing_anchor_count": 0,
+                "ambiguous_double_peak_count": 0,
+                "excluded_short_window_count": 0,
+                "excluded_missing_support_count": 0,
+            },
+        )
         for anchor in anchors:
             if anchor.exception_label == "ambiguous_double_peak":
                 anchor_summary["ambiguous_double_peak_count"] += 1
+                session_anchor_summary["ambiguous_double_peak_count"] += 1
                 continue
             scale = float(cache.fs_ecog) / float(anchor.sample_rate_hz or reference_fs_hz)
             anchor_idx_ecog = int(round(float(anchor.anchor_idx) * scale))
@@ -296,9 +404,11 @@ def build_split_samples(
             x_start = x_end - window_samples
             if x_start < 0 or x_end <= x_start:
                 anchor_summary["excluded_short_window_count"] += 1
+                session_anchor_summary["excluded_short_window_count"] += 1
                 continue
             if x_end > feature_sequence.usable_samples:
                 anchor_summary["excluded_missing_support_count"] += 1
+                session_anchor_summary["excluded_missing_support_count"] += 1
                 continue
             window = slice_feature_window(feature_sequence, x_start=x_start, x_end=x_end)
             record_item = SampleRecord(
@@ -315,12 +425,20 @@ def build_split_samples(
             split_records[split_name].append(record_item)
             split_windows[split_name].append(window)
             anchor_summary["per_split_counts"][split_name][anchor.phase_label] += 1
+            if anchor.phase_label == "support":
+                session_anchor_summary["support_anchor_count"] += 1
+            else:
+                session_anchor_summary["swing_anchor_count"] += 1
 
     if bin_samples is None:
         raise RuntimeError("No usable gait phase EEG samples were found for the provided reference labels.")
+    if base_fs_hz is None:
+        raise RuntimeError("No usable gait phase EEG sample rate metadata was collected.")
 
     arrays: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     per_split_meta: dict[str, Any] = {}
+    x_window_summary: dict[str, Any] = {}
+    eeg_sample_layer_summary: dict[str, Any] = {}
     for split_name in ("train", "val", "test"):
         records, windows = _subsample_records(
             split_records[split_name],
@@ -332,6 +450,8 @@ def build_split_samples(
             raise RuntimeError(f"Split {split_name} has no usable gait EEG samples.")
         x, y = _sample_records_to_arrays(records, windows)
         arrays[split_name] = (x, y)
+        x_window_summary[split_name] = _summarize_x_windows(records)
+        eeg_sample_layer_summary[split_name] = _summarize_eeg_sample_layer(records)
         per_split_meta[split_name] = {
             "n_samples": int(y.shape[0]),
             "session_ids": sorted({record.session_id for record in records}),
@@ -345,12 +465,30 @@ def build_split_samples(
             },
         }
 
+    effective_feature_bin_ms = (float(bin_samples) / float(base_fs_hz)) * 1000.0
+    effective_window_seconds = float(window_samples) / float(base_fs_hz)
+    effective_global_lag_ms = (float(lag_samples or 0) / float(base_fs_hz)) * 1000.0
+    used_session_ids = set()
+    for split_name in ("train", "val", "test"):
+        used_session_ids.update(per_split_meta[split_name]["session_ids"])
     return arrays, {
         "dataset_name": dataset.dataset_name,
         "feature_bin_samples": int(bin_samples),
         "lag_samples": int(lag_samples or 0),
+        "effective_window_samples": int(window_samples),
+        "effective_feature_bin_ms": float(effective_feature_bin_ms),
+        "effective_window_seconds": float(effective_window_seconds),
+        "effective_global_lag_ms": float(effective_global_lag_ms),
         "anchor_summary": anchor_summary,
         "per_split_meta": per_split_meta,
+        "x_window_summary": x_window_summary,
+        "label_layer_summary": _summarize_label_layer(
+            reference_records=reference_records,
+            session_ids=used_session_ids,
+            signal_names=target_signal_names,
+        ),
+        "anchor_layer_summary": anchor_layer_summary,
+        "eeg_sample_layer_summary": eeg_sample_layer_summary,
     }
 
 
@@ -500,12 +638,22 @@ def train_and_evaluate(args: argparse.Namespace) -> dict[str, Any]:
             "feature_reducers": list(normalize_reducers(tuple(part.strip() for part in args.feature_reducers.split(",") if part.strip()))),
             "signal_preprocess": normalize_signal_preprocess(args.signal_preprocess),
             "feature_bin_ms": float(args.feature_bin_ms),
+            "feature_bin_samples": int(meta["feature_bin_samples"]),
             "window_seconds": float(args.window_seconds),
             "global_lag_ms": float(args.global_lag_ms),
+            "lag_samples": int(meta["lag_samples"]),
+            "effective_window_samples": int(meta["effective_window_samples"]),
+            "effective_feature_bin_ms": float(meta.get("effective_feature_bin_ms", args.feature_bin_ms)),
+            "effective_window_seconds": float(meta.get("effective_window_seconds", args.window_seconds)),
+            "effective_global_lag_ms": float(meta.get("effective_global_lag_ms", args.global_lag_ms)),
             "reference_label_source": str(Path(args.reference_jsonl).resolve()),
-            "reference_version": "gait_phase_reference_provisional_v1_0717_0719",
+            "reference_version": str(args.reference_version),
             "anchor_summary": meta["anchor_summary"],
             "per_split_meta": meta["per_split_meta"],
+            "x_window_summary": meta["x_window_summary"],
+            "label_layer_summary": meta.get("label_layer_summary", {}),
+            "anchor_layer_summary": meta.get("anchor_layer_summary", {}),
+            "eeg_sample_layer_summary": meta.get("eeg_sample_layer_summary", {}),
         },
         "experiment_track": "cross_session_mainline",
     }

@@ -4,7 +4,11 @@ from typing import Any
 
 import numpy as np
 
-from bci_autoresearch.eval.gait_phase import build_extrema_reference_labels
+from bci_autoresearch.eval.gait_phase import (
+    HYSTERESIS_REFERENCE_METHOD_CONFIG,
+    build_extrema_reference_labels,
+    build_hysteresis_reference_labels,
+)
 
 
 def _merge_mask(mask: np.ndarray) -> list[dict[str, int]]:
@@ -37,19 +41,28 @@ def _build_response(intervals: list[dict[str, int]], *, exception_counts: dict[s
     }
 
 
-def _predict_hysteresis(signal: np.ndarray, *, high_q: float, low_q: float, smooth_window: int) -> dict[str, Any]:
-    smoothed = _moving_average(signal, smooth_window)
-    high = float(np.quantile(smoothed, high_q))
-    low = float(np.quantile(smoothed, low_q))
-    active = False
-    mask = np.zeros(smoothed.shape[0], dtype=bool)
-    for idx, value in enumerate(smoothed.tolist()):
-        if not active and value >= high:
-            active = True
-        elif active and value <= low:
-            active = False
-        mask[idx] = active
-    return _build_response(_merge_mask(mask))
+def _predict_hysteresis(
+    signal: np.ndarray,
+    *,
+    time_s: np.ndarray,
+    high_q: float,
+    low_q: float,
+    smooth_window_ms: float,
+    min_swing_ms: float,
+    min_support_ms: float,
+    merge_gap_ms: float,
+) -> dict[str, Any]:
+    return build_hysteresis_reference_labels(
+        time_s=np.asarray(time_s, dtype=np.float64),
+        toe_z=np.asarray(signal, dtype=np.float32),
+        signal_name="toe_signal",
+        high_q=high_q,
+        low_q=low_q,
+        smooth_window_ms=smooth_window_ms,
+        min_swing_ms=min_swing_ms,
+        min_support_ms=min_support_ms,
+        merge_gap_ms=merge_gap_ms,
+    )
 
 
 def _predict_extrema_envelope(signal: np.ndarray, *, time_s: np.ndarray, smooth_window: int, min_separation_samples: int) -> dict[str, Any]:
@@ -110,9 +123,28 @@ def _suppress_overlaps(primary: list[dict[str, int]], secondary: list[dict[str, 
     return suppressed
 
 
-def _predict_bilateral_consensus(toe_signals: dict[str, np.ndarray], *, high_q: float, low_q: float, smooth_window: int) -> dict[str, Any]:
+def _predict_bilateral_consensus(
+    toe_signals: dict[str, np.ndarray],
+    *,
+    time_s: np.ndarray,
+    high_q: float,
+    low_q: float,
+    smooth_window_ms: float,
+    min_swing_ms: float,
+    min_support_ms: float,
+    merge_gap_ms: float,
+) -> dict[str, Any]:
     raw_predictions = {
-        signal_name: _predict_hysteresis(signal, high_q=high_q, low_q=low_q, smooth_window=smooth_window)
+        signal_name: _predict_hysteresis(
+            signal,
+            time_s=np.asarray(time_s, dtype=np.float64),
+            high_q=high_q,
+            low_q=low_q,
+            smooth_window_ms=smooth_window_ms,
+            min_swing_ms=min_swing_ms,
+            min_support_ms=min_support_ms,
+            merge_gap_ms=merge_gap_ms,
+        )
         for signal_name, signal in toe_signals.items()
     }
     rh = list(raw_predictions["RHTOE_z"]["swing_intervals"])
@@ -127,10 +159,21 @@ def _predict_bilateral_consensus(toe_signals: dict[str, np.ndarray], *, high_q: 
 
 METHOD_LIBRARY: dict[str, dict[str, Any]] = {
     "hysteresis_threshold": {
-        "default_config": {"high_q": 0.7, "low_q": 0.35, "smooth_window": 5},
+        "default_config": dict(HYSTERESIS_REFERENCE_METHOD_CONFIG),
         "stability_variants": [
-            {"name": "tight_hysteresis", "high_q": 0.72, "low_q": 0.38, "smooth_window": 5},
-            {"name": "wider_hysteresis", "high_q": 0.68, "low_q": 0.32, "smooth_window": 7},
+            {
+                "name": "tight_hysteresis",
+                **dict(HYSTERESIS_REFERENCE_METHOD_CONFIG),
+                "high_q": 0.72,
+                "low_q": 0.38,
+            },
+            {
+                "name": "wider_hysteresis",
+                **dict(HYSTERESIS_REFERENCE_METHOD_CONFIG),
+                "high_q": 0.68,
+                "low_q": 0.32,
+                "merge_gap_ms": 80.0,
+            },
         ],
     },
     "extrema_envelope": {
@@ -148,10 +191,25 @@ METHOD_LIBRARY: dict[str, dict[str, Any]] = {
         ],
     },
     "bilateral_consensus": {
-        "default_config": {"high_q": 0.68, "low_q": 0.34, "smooth_window": 5},
+        "default_config": {
+            **dict(HYSTERESIS_REFERENCE_METHOD_CONFIG),
+            "high_q": 0.68,
+            "low_q": 0.34,
+        },
         "stability_variants": [
-            {"name": "consensus_tight", "high_q": 0.7, "low_q": 0.36, "smooth_window": 5},
-            {"name": "consensus_smooth", "high_q": 0.66, "low_q": 0.32, "smooth_window": 7},
+            {
+                "name": "consensus_tight",
+                **dict(HYSTERESIS_REFERENCE_METHOD_CONFIG),
+                "high_q": 0.7,
+                "low_q": 0.36,
+            },
+            {
+                "name": "consensus_smooth",
+                **dict(HYSTERESIS_REFERENCE_METHOD_CONFIG),
+                "high_q": 0.66,
+                "low_q": 0.32,
+                "merge_gap_ms": 80.0,
+            },
         ],
     },
 }
@@ -178,12 +236,20 @@ def predict_toe_labels(
 ) -> dict[str, Any]:
     resolved = {**default_config_for(method_family), **dict(config or {})}
     if method_family == "hysteresis_threshold":
+        smooth_window_ms = float(resolved.get("smooth_window_ms", resolved.get("smooth_window", 75.0)))
+        min_swing_ms = float(resolved.get("min_swing_ms", 120.0))
+        min_support_ms = float(resolved.get("min_support_ms", 120.0))
+        merge_gap_ms = float(resolved.get("merge_gap_ms", 60.0))
         return {
             signal_name: _predict_hysteresis(
                 signal,
+                time_s=np.asarray(time_s, dtype=np.float64),
                 high_q=float(resolved["high_q"]),
                 low_q=float(resolved["low_q"]),
-                smooth_window=int(resolved["smooth_window"]),
+                smooth_window_ms=smooth_window_ms,
+                min_swing_ms=min_swing_ms,
+                min_support_ms=min_support_ms,
+                merge_gap_ms=merge_gap_ms,
             )
             for signal_name, signal in toe_signals.items()
         }
@@ -207,10 +273,18 @@ def predict_toe_labels(
             for signal_name, signal in toe_signals.items()
         }
     if method_family == "bilateral_consensus":
+        smooth_window_ms = float(resolved.get("smooth_window_ms", resolved.get("smooth_window", 75.0)))
+        min_swing_ms = float(resolved.get("min_swing_ms", 120.0))
+        min_support_ms = float(resolved.get("min_support_ms", 120.0))
+        merge_gap_ms = float(resolved.get("merge_gap_ms", 60.0))
         return _predict_bilateral_consensus(
             toe_signals,
+            time_s=np.asarray(time_s, dtype=np.float64),
             high_q=float(resolved["high_q"]),
             low_q=float(resolved["low_q"]),
-            smooth_window=int(resolved["smooth_window"]),
+            smooth_window_ms=smooth_window_ms,
+            min_swing_ms=min_swing_ms,
+            min_support_ms=min_support_ms,
+            merge_gap_ms=merge_gap_ms,
         )
     raise ValueError(f"Unsupported gait phase method family: {method_family}")

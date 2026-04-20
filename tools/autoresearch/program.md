@@ -40,13 +40,21 @@
   - 改原始数据
 
 ## 当前夜跑要求
-- 当前先不扩算法家族，只保留：
+- 当前 timing scan 主线先保留：
   - `feature_gru`
   - `feature_tcn`
+- 当前新增端到端原始脑电候选：
+  - `DeepConvNet`
+  - `TMSANet`
+  - `Sinc-Conformer` 作为外部对照算法名保留，仓内实现后再进入自动轨道
 - 特征先固定：
   - `car_notch_bandpass`
   - `lmp+hg_power`
   - `100 ms` 分箱
+- 原始脑电端到端线固定用：
+  - `artifacts/share/gait_phase_eeg_historical_raw32_500hz_package`
+  - 同一套 `0717 / 0719` 历史高分样本列表
+  - `32` 导、`500 Hz`、`0.5 秒` 前置窗
 - 当前优先回答 timing 问题：
   - `window_seconds = 0.5 / 1.0 / 2.0 / 3.0`
   - `global_lag_ms = 0 / 100 / 250 / 500`

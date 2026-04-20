@@ -5,22 +5,127 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AutoResearch Operator</title>
   <link rel="icon" href="data:," />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,600;0,700;1,400&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #eef2ed;
-      --panel: rgba(251, 248, 240, 0.86);
-      --panel-strong: rgba(255, 253, 248, 0.92);
-      --ink: #17324a;
-      --muted: #667481;
-      --line: rgba(23, 50, 74, 0.10);
+      --bg: #f8f6ef;
+      --panel: rgba(255, 252, 245, 0.24);
+      --panel-strong: rgba(255, 252, 246, 0.38);
+      --ink: #2d271c;
+      --muted: #766b55;
+      --line: rgba(117, 91, 0, 0.12);
       --ok: #2f7e63;
       --warn: #b8842d;
       --off: #8694a0;
-      --shadow: 0 28px 90px rgba(23, 50, 74, 0.12);
+      --shadow: 0 24px 60px rgba(117, 91, 0, 0.08);
       --green: #3e8b78;
       --green-line: #73bca1;
-      --gray-dot: rgba(23, 50, 74, 0.14);
+      --gray-dot: rgba(117, 91, 0, 0.18);
       --rmse: #c66d2e;
+      --bg-image: url("./assets/monet/wheatfield_poppies.jpg");
+      --bg-overlay: linear-gradient(180deg, rgba(250, 248, 243, 0.04), rgba(250, 248, 243, 0.20));
+      --panel-border: rgba(255, 255, 255, 0.28);
+      --panel-highlight: rgba(255, 255, 255, 0.18);
+      --accent-strong: #755b00;
+      --accent-soft: rgba(244, 196, 48, 0.16);
+      --atmo-1: rgba(225, 190, 88, 0.18);
+      --atmo-2: rgba(196, 121, 71, 0.12);
+      --atmo-3: rgba(104, 150, 121, 0.10);
+      --hero-glow: rgba(244, 196, 48, 0.18);
+      --bg-filter: saturate(1.06) contrast(1.04) brightness(1.03);
+      --card-surface: rgba(255, 252, 246, 0.30);
+      --card-surface-strong: rgba(255, 252, 246, 0.42);
+      --card-border-soft: rgba(23, 50, 74, 0.08);
+      --card-border-strong: rgba(255, 255, 255, 0.78);
+      --card-shadow-soft: none;
+      --glass-soft: rgba(255, 255, 255, 0.12);
+      --glass-muted: rgba(255, 255, 255, 0.08);
+      --plot-surface: rgba(255, 249, 241, 0.76);
+      --plot-surface-2: rgba(236, 226, 209, 0.56);
+      --plot-grid: rgba(117, 91, 0, 0.06);
+      --chip-surface: rgba(255, 255, 255, 0.64);
+      --chip-border: rgba(255, 255, 255, 0.76);
+      --row-best-surface: rgba(62, 139, 120, 0.10);
+      --row-tonight-surface: rgba(183, 132, 45, 0.09);
+      --row-both-surface: linear-gradient(90deg, rgba(62, 139, 120, 0.13), rgba(183, 132, 45, 0.10));
+      --chip-neutral-surface: rgba(23, 50, 74, 0.07);
+      --chip-ok-surface: rgba(62, 139, 120, 0.12);
+      --chip-warn-surface: rgba(183, 132, 45, 0.14);
+      --chip-danger-surface: rgba(198, 80, 50, 0.12);
+      --button-ok-surface: rgba(47, 123, 98, 0.14);
+      --button-ok-hover-surface: rgba(47, 123, 98, 0.18);
+      --fact-pill-surface: rgba(20, 49, 74, 0.08);
+      --feed-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.14));
+      --tree-marker-surface: rgba(62, 139, 120, 0.18);
+      --health-warn-surface: rgba(183, 132, 45, 0.12);
+      --health-stagnant-surface: rgba(198, 80, 50, 0.12);
+      --heatmap-track-surface: rgba(23, 50, 74, 0.04);
+      --pipeline-stage-surface: rgba(23, 50, 74, 0.06);
+      --pipeline-ok-surface: rgba(47, 126, 99, 0.12);
+      --pipeline-warn-surface: rgba(183, 132, 45, 0.12);
+      --story-surface-top: color-mix(in srgb, var(--card-surface-strong) 92%, rgba(255,255,255,0.08) 8%);
+      --story-surface-bottom: color-mix(in srgb, var(--card-surface) 88%, transparent 12%);
+    }
+
+    body[data-theme="lilies"] {
+      --bg: #f5faf8;
+      --panel: rgba(243, 248, 246, 0.45);
+      --panel-strong: rgba(248, 251, 249, 0.60);
+      --ink: #eef7f1;
+      --muted: rgba(236, 247, 240, 0.85);
+      --line: rgba(255, 255, 255, 0.16);
+      --shadow: 0 28px 64px rgba(11, 27, 20, 0.20);
+      --ok: #f2e3a1;
+      --warn: #eed28a;
+      --off: #c4d5cd;
+      --green: #f2e3a1;
+      --green-line: #f8edbe;
+      --gray-dot: rgba(214, 232, 223, 0.45);
+      --bg-image: url("./assets/monet/water_lilies.jpg");
+      --bg-overlay: linear-gradient(180deg, rgba(4, 16, 14, 0.24), rgba(8, 18, 16, 0.56));
+      --panel-border: rgba(255, 255, 255, 0.18);
+      --panel-highlight: rgba(255, 255, 255, 0.05);
+      --accent-strong: #f3faf6;
+      --accent-soft: rgba(255, 255, 255, 0.15);
+      --atmo-1: rgba(108, 199, 170, 0.16);
+      --atmo-2: rgba(159, 123, 225, 0.12);
+      --atmo-3: rgba(233, 241, 168, 0.08);
+      --hero-glow: rgba(115, 188, 161, 0.20);
+      --bg-filter: blur(1.2px) saturate(0.88) contrast(0.98) brightness(0.90);
+      --card-surface: rgba(7, 18, 16, 0.65);
+      --card-surface-strong: rgba(7, 18, 16, 0.80);
+      --card-border-soft: rgba(255, 255, 255, 0.14);
+      --card-border-strong: rgba(255, 255, 255, 0.18);
+      --card-shadow-soft: none;
+      --glass-soft: rgba(13, 30, 24, 0.60);
+      --glass-muted: rgba(11, 25, 21, 0.50);
+      --plot-surface: rgba(9, 22, 18, 0.85);
+      --plot-surface-2: rgba(15, 33, 26, 0.70);
+      --plot-grid: rgba(255, 255, 255, 0.05);
+      --chip-surface: rgba(8, 20, 17, 0.85);
+      --chip-border: rgba(255, 255, 255, 0.14);
+      --row-best-surface: rgba(52, 114, 95, 0.28);
+      --row-tonight-surface: rgba(132, 111, 55, 0.24);
+      --row-both-surface: linear-gradient(90deg, rgba(49, 112, 93, 0.30), rgba(132, 111, 55, 0.24));
+      --chip-neutral-surface: rgba(11, 24, 20, 0.85);
+      --chip-ok-surface: rgba(32, 84, 69, 0.70);
+      --chip-warn-surface: rgba(110, 89, 39, 0.65);
+      --chip-danger-surface: rgba(110, 54, 40, 0.65);
+      --button-ok-surface: rgba(31, 93, 74, 0.60);
+      --button-ok-hover-surface: rgba(39, 111, 88, 0.75);
+      --fact-pill-surface: rgba(10, 24, 20, 0.85);
+      --feed-surface: linear-gradient(180deg, rgba(9, 22, 18, 0.85), rgba(9, 22, 18, 0.70));
+      --tree-marker-surface: rgba(73, 160, 131, 0.30);
+      --health-warn-surface: rgba(110, 89, 39, 0.48);
+      --health-stagnant-surface: rgba(110, 54, 40, 0.46);
+      --heatmap-track-surface: rgba(9, 21, 18, 0.58);
+      --pipeline-stage-surface: rgba(10, 24, 20, 0.70);
+      --pipeline-ok-surface: rgba(31, 93, 74, 0.46);
+      --pipeline-warn-surface: rgba(110, 89, 39, 0.46);
+      --story-surface-top: rgba(9, 20, 17, 0.88);
+      --story-surface-bottom: rgba(9, 20, 17, 0.78);
     }
 
     * { box-sizing: border-box; }
@@ -30,10 +135,11 @@
       min-height: 100vh;
       position: relative;
       color: var(--ink);
-      font-family: "SF Pro Display", "PingFang SC", "Noto Sans SC", sans-serif;
-      background: linear-gradient(180deg, var(--bg) 0%, #e7eee9 100%);
+      font-family: "Manrope", "PingFang SC", "Noto Sans SC", sans-serif;
+      background: linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--bg) 84%, #ffffff 16%) 100%);
       overflow-x: hidden;
       isolation: isolate;
+      transition: color 220ms ease, background 220ms ease;
     }
 
     body::before {
@@ -41,18 +147,15 @@
       position: fixed;
       inset: 0;
       z-index: -2;
-      background-image:
-        linear-gradient(180deg, rgba(238, 242, 237, 0.72), rgba(238, 242, 237, 0.94)),
-        url("assets/monet/water_lilies.jpg"),
-        url("assets/monet/water_lily_pond_cc0.jpg"),
-        url("assets/monet/water_lilies_japanese_bridge.jpg");
-      background-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
-      background-size: cover, 48% 56%, 38% 42%, 34% 38%;
-      background-position: center center, left -3% top 2%, right -4% top 18%, center bottom -6%;
-      opacity: 0.76;
-      filter: blur(12px) saturate(0.74) contrast(0.94) brightness(1.03);
-      transform: scale(1.04);
+      background-image: var(--bg-overlay), var(--bg-image);
+      background-repeat: no-repeat, no-repeat;
+      background-size: cover, cover;
+      background-position: center center, center center;
+      opacity: 1;
+      filter: var(--bg-filter);
+      transform: scale(1.01);
       pointer-events: none;
+      transition: filter 220ms ease, transform 220ms ease;
     }
 
     body::after {
@@ -62,16 +165,62 @@
       z-index: -1;
       pointer-events: none;
       background:
-        radial-gradient(circle at 10% 12%, rgba(96, 142, 171, 0.18), transparent 18%),
-        radial-gradient(circle at 82% 16%, rgba(190, 140, 80, 0.14), transparent 18%),
-        radial-gradient(circle at 74% 82%, rgba(76, 145, 113, 0.11), transparent 20%),
-        linear-gradient(135deg, rgba(255, 255, 255, 0.16), transparent 24%, rgba(255, 255, 255, 0.10) 76%, transparent 100%);
+        radial-gradient(circle at 16% 18%, var(--atmo-1), transparent 20%),
+        radial-gradient(circle at 82% 16%, var(--atmo-2), transparent 20%),
+        radial-gradient(circle at 70% 80%, var(--atmo-3), transparent 22%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.14), transparent 24%, rgba(255, 255, 255, 0.05) 76%, transparent 100%);
     }
 
     .shell {
       max-width: 1600px;
       margin: 0 auto;
-      padding: 28px 24px 40px;
+      padding: 34px 28px 56px;
+    }
+
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--glass-soft) 88%, transparent 12%);
+      border: 1px solid var(--panel-border);
+      backdrop-filter: blur(20px);
+      box-shadow: inset 0 1px 0 var(--panel-highlight);
+    }
+
+    .theme-button {
+      appearance: none;
+      border: 0;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+    }
+
+    .theme-button:hover {
+      color: var(--accent-strong);
+      transform: translateY(-1px);
+    }
+
+    .theme-button.active {
+      background: var(--chip-surface);
+      color: var(--accent-strong);
+      box-shadow: 0 8px 18px rgba(117, 91, 0, 0.08);
+    }
+
+    .mission-header-side {
+      display: grid;
+      justify-items: end;
+      gap: 10px;
+      min-width: 0;
+      align-content: start;
     }
 
     .hero {
@@ -80,9 +229,9 @@
       grid-template-areas:
         "hero metrics"
         "hero heartbeat";
-      gap: 16px 18px;
+      gap: 24px 28px;
       align-items: stretch;
-      margin-bottom: 20px;
+      margin-bottom: 34px;
     }
 
     .hero-card {
@@ -104,12 +253,12 @@
       align-items: center;
       padding: 5px 10px;
       border-radius: 999px;
-      background: rgba(47, 123, 98, 0.12);
-      color: var(--ok);
-      border: 1px solid rgba(47, 123, 98, 0.16);
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      border: 1px solid var(--panel-border);
       font-size: 11px;
       font-weight: 800;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
     }
 
@@ -126,7 +275,7 @@
       font-size: clamp(32px, 4.6vw, 56px);
       line-height: 0.98;
       letter-spacing: -0.05em;
-      font-family: "Iowan Old Style", "Baskerville", "Times New Roman", "Songti SC", serif;
+      font-family: "Noto Serif", "Songti SC", serif;
       font-weight: 600;
     }
 
@@ -139,11 +288,14 @@
     }
 
     .panel {
-      background: linear-gradient(135deg, rgba(252, 248, 240, 0.90), rgba(234, 240, 244, 0.85)), var(--panel);
-      border: 1px solid rgba(255, 255, 255, 0.84);
+      background:
+        linear-gradient(135deg, color-mix(in srgb, var(--panel) 68%, rgba(255,255,255,0.10) 32%), color-mix(in srgb, var(--panel-strong) 70%, rgba(255,255,255,0.06) 30%)),
+        var(--panel);
+      border: 1px solid var(--panel-border);
       border-radius: 26px;
       box-shadow: var(--shadow);
-      backdrop-filter: blur(20px);
+      backdrop-filter: blur(28px) saturate(1.08);
+      -webkit-backdrop-filter: blur(28px) saturate(1.08);
       overflow: hidden;
     }
 
@@ -178,8 +330,10 @@
       flex: 1 1 220px;
       padding: 12px 14px;
       border-radius: 16px;
-      background: rgba(255, 255, 255, 0.58);
-      border: 1px solid rgba(23, 50, 74, 0.08);
+      background: var(--card-surface);
+      border: 1px solid var(--card-border-soft);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(14px) saturate(1.04);
     }
 
     .hero-summary-label {
@@ -200,8 +354,10 @@
     .hero-effect-note {
       padding: 14px 16px;
       border-radius: 18px;
-      background: rgba(255, 255, 255, 0.58);
-      border: 1px solid rgba(255, 255, 255, 0.78);
+      background: var(--card-surface);
+      border: 1px solid var(--card-border-strong);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(16px) saturate(1.04);
       display: grid;
       gap: 4px;
     }
@@ -237,8 +393,10 @@
       gap: 2px;
       padding: 8px 10px;
       border-radius: 14px;
-      background: rgba(255, 255, 255, 0.54);
-      border: 1px solid rgba(23, 50, 74, 0.08);
+      background: var(--card-surface);
+      border: 1px solid var(--card-border-soft);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(14px) saturate(1.04);
     }
 
     .hero-glossary-key {
@@ -259,8 +417,10 @@
     .heartbeat-shell {
       padding: 16px 18px 18px;
       border-radius: 22px;
-      background: rgba(255, 255, 255, 0.54);
-      border: 1px solid rgba(255, 255, 255, 0.78);
+      background: var(--card-surface);
+      border: 1px solid var(--card-border-strong);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(16px) saturate(1.04);
     }
 
     .direction-card-shell {
@@ -294,18 +454,20 @@
     .direction-card {
       padding: 10px 12px;
       border-radius: 16px;
-      background: rgba(255, 255, 255, 0.6);
-      border: 1px solid rgba(20, 49, 74, 0.08);
+      background: var(--card-surface);
+      border: 1px solid var(--card-border-soft);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(14px) saturate(1.04);
       display: grid;
       gap: 8px;
       flex: 1 1 180px;
     }
 
     .joint-breakdown-shell {
-      margin-top: 20px;
-      padding: 18px 22px 22px;
+      margin-top: 28px;
+      padding: 22px 26px 28px;
       display: grid;
-      gap: 16px;
+      gap: 20px;
     }
 
     .joint-breakdown-note {
@@ -323,8 +485,10 @@
     .limb-card {
       padding: 14px 16px;
       border-radius: 18px;
-      background: rgba(255, 255, 255, 0.58);
-      border: 1px solid rgba(20, 49, 74, 0.08);
+      background: var(--card-surface);
+      border: 1px solid var(--card-border-soft);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(14px) saturate(1.04);
       display: grid;
       gap: 8px;
     }
@@ -351,8 +515,10 @@
     .joint-table-wrap {
       overflow-x: auto;
       border-radius: 18px;
-      border: 1px solid rgba(20, 49, 74, 0.08);
-      background: rgba(255, 255, 255, 0.56);
+      border: 1px solid var(--card-border-soft);
+      background: color-mix(in srgb, var(--card-surface) 92%, transparent 8%);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(14px) saturate(1.04);
     }
 
     .joint-table {
@@ -375,7 +541,7 @@
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--muted);
-      background: rgba(255, 255, 255, 0.74);
+      background: var(--card-surface-strong);
       position: sticky;
       top: 0;
       z-index: 1;
@@ -485,9 +651,9 @@
     .panel-head {
       display: flex;
       justify-content: space-between;
-      gap: 16px;
+      gap: 18px;
       align-items: baseline;
-      padding: 20px 22px 12px;
+      padding: 22px 24px 14px;
       border-bottom: 1px solid var(--line);
     }
 
@@ -505,18 +671,20 @@
     .mainline-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-      padding: 18px 22px 22px;
+      gap: 18px;
+      padding: 20px 24px 24px;
     }
 
     .moonshot-strip {
       display: grid;
-      gap: 14px;
-      margin: 0 22px 10px;
-      padding: 16px 16px 18px;
+      gap: 18px;
+      margin: 0 24px 18px;
+      padding: 20px 20px 22px;
       border-radius: 20px;
-      background: rgba(255, 255, 255, 0.66);
-      border: 1px solid rgba(255, 255, 255, 0.82);
+      background: var(--card-surface-strong);
+      border: 1px solid var(--card-border-strong);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(16px) saturate(1.04);
     }
 
     .moonshot-head {
@@ -555,8 +723,10 @@
 
     .moonshot-summary-card {
       border-radius: 16px;
-      border: 1px solid rgba(20, 49, 74, 0.08);
-      background: rgba(255, 255, 255, 0.60);
+      border: 1px solid var(--card-border-soft);
+      background: var(--card-surface);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(14px) saturate(1.04);
       padding: 12px 14px;
       display: grid;
       gap: 6px;
@@ -584,8 +754,10 @@
     .moonshot-table-wrap {
       overflow-x: auto;
       border-radius: 18px;
-      border: 1px solid rgba(20, 49, 74, 0.08);
-      background: rgba(255, 255, 255, 0.58);
+      border: 1px solid var(--card-border-soft);
+      background: color-mix(in srgb, var(--card-surface) 92%, transparent 8%);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(14px) saturate(1.04);
     }
 
     .moonshot-table {
@@ -609,7 +781,7 @@
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--muted);
-      background: rgba(255, 255, 255, 0.76);
+      background: var(--card-surface-strong);
       position: sticky;
       top: 0;
       z-index: 1;
@@ -627,15 +799,15 @@
     }
 
     .moonshot-row-best {
-      background: rgba(62, 139, 120, 0.10);
+      background: var(--row-best-surface);
     }
 
     .moonshot-row-tonight {
-      background: rgba(183, 132, 45, 0.09);
+      background: var(--row-tonight-surface);
     }
 
     .moonshot-row-both {
-      background: linear-gradient(90deg, rgba(62, 139, 120, 0.13), rgba(183, 132, 45, 0.10));
+      background: var(--row-both-surface);
     }
 
     .moonshot-chip {
@@ -644,7 +816,7 @@
       gap: 6px;
       padding: 4px 10px;
       border-radius: 999px;
-      background: rgba(23, 50, 74, 0.07);
+      background: var(--chip-neutral-surface);
       color: var(--ink);
       font-size: 11px;
       line-height: 1.4;
@@ -652,20 +824,22 @@
     }
 
     .moonshot-chip.ok {
-      background: rgba(62, 139, 120, 0.12);
+      background: var(--chip-ok-surface);
       color: var(--ok);
     }
 
     .moonshot-chip.warn {
-      background: rgba(183, 132, 45, 0.14);
+      background: var(--chip-warn-surface);
       color: var(--warn);
     }
 
     .moonshot-empty {
       padding: 12px 14px;
       border-radius: 16px;
-      background: rgba(255, 255, 255, 0.58);
-      border: 1px solid rgba(20, 49, 74, 0.08);
+      background: var(--card-surface);
+      border: 1px solid var(--card-border-soft);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(14px) saturate(1.04);
       color: var(--muted);
       font-size: 12px;
       line-height: 1.55;
@@ -676,8 +850,10 @@
       gap: 12px;
       padding: 14px 16px 16px;
       border-radius: 20px;
-      background: rgba(255, 255, 255, 0.60);
-      border: 1px solid rgba(255, 255, 255, 0.76);
+      background: var(--card-surface);
+      border: 1px solid var(--card-border-strong);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(14px) saturate(1.04);
     }
 
     .chart-head {
@@ -770,8 +946,8 @@
       display: block;
       border-radius: 18px;
       background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(246, 242, 235, 0.72)),
-        linear-gradient(90deg, rgba(20, 49, 74, 0.02), rgba(20, 49, 74, 0));
+        linear-gradient(180deg, var(--plot-surface), var(--plot-surface-2)),
+        linear-gradient(90deg, var(--plot-grid), transparent);
     }
 
     .epic-trend-slot .chart-svg {
@@ -815,8 +991,10 @@
       gap: 6px;
       padding: 4px 8px;
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.64);
-      border: 1px solid rgba(20, 49, 74, 0.08);
+      background: var(--chip-surface);
+      border: 1px solid var(--chip-border);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(12px) saturate(1.04);
       font-size: 11px;
       color: var(--muted);
     }
@@ -841,8 +1019,10 @@
       gap: 12px;
       padding: 14px 16px 16px;
       border-radius: 20px;
-      background: rgba(255, 255, 255, 0.60);
-      border: 1px solid rgba(255, 255, 255, 0.76);
+      background: var(--card-surface);
+      border: 1px solid var(--card-border-strong);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(14px) saturate(1.04);
     }
 
     .projection-head {
@@ -875,7 +1055,7 @@
       appearance: none;
       border: 0;
       border-radius: 999px;
-      background: rgba(47, 123, 98, 0.14);
+      background: var(--button-ok-surface);
       color: var(--ok);
       padding: 8px 14px;
       font-size: 12px;
@@ -887,19 +1067,21 @@
 
     .projection-button:hover {
       transform: translateY(-1px);
-      background: rgba(47, 123, 98, 0.18);
+      background: var(--button-ok-hover-surface);
     }
 
     .projection-select {
       appearance: none;
       border: 1px solid rgba(20, 43, 64, 0.10);
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.76);
+      background: var(--chip-surface);
       color: var(--ink);
       padding: 8px 12px;
       font-size: 12px;
       font-weight: 700;
       letter-spacing: 0.02em;
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(12px) saturate(1.04);
     }
 
     .projection-slider {
@@ -924,8 +1106,10 @@
       gap: 10px;
       padding: 14px 16px 16px;
       border-radius: 20px;
-      background: rgba(255, 255, 255, 0.60);
-      border: 1px solid rgba(255, 255, 255, 0.76);
+      background: var(--card-surface);
+      border: 1px solid var(--card-border-strong);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(16px) saturate(1.04);
     }
 
     .projection-card-head {
@@ -951,8 +1135,8 @@
       display: block;
       border-radius: 18px;
       background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(246, 242, 235, 0.72)),
-        linear-gradient(90deg, rgba(20, 49, 74, 0.02), rgba(20, 49, 74, 0));
+        linear-gradient(180deg, var(--plot-surface), var(--plot-surface-2)),
+        linear-gradient(90deg, var(--plot-grid), transparent);
     }
 
     .projection-legend {
@@ -988,8 +1172,10 @@
       gap: 12px;
       padding: 14px 16px 16px;
       border-radius: 20px;
-      background: rgba(255, 255, 255, 0.60);
-      border: 1px solid rgba(255, 255, 255, 0.76);
+      background: var(--card-surface);
+      border: 1px solid var(--card-border-strong);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(16px) saturate(1.04);
     }
 
     .joint-series-head {
@@ -1022,8 +1208,10 @@
       gap: 10px;
       padding: 12px 14px 14px;
       border-radius: 18px;
-      background: rgba(255, 255, 255, 0.72);
-      border: 1px solid rgba(255, 255, 255, 0.82);
+      background: var(--card-surface-strong);
+      border: 1px solid var(--card-border-strong);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(16px) saturate(1.04);
     }
 
     .joint-series-card-head {
@@ -1065,17 +1253,17 @@
     }
 
     .story-shell {
-      padding: 16px 22px 22px;
+      padding: 20px 24px 24px;
     }
 
     .secondary-masonry {
-      margin-top: 18px;
+      margin-top: 24px;
     }
 
     .story-grid {
       display: grid;
       grid-template-columns: 1fr;
-      gap: 14px;
+      gap: 18px;
     }
 
     .story-section {
@@ -1083,8 +1271,10 @@
       gap: 12px;
       padding: 14px 16px 16px;
       border-radius: 22px;
-      background: rgba(255, 255, 255, 0.56);
-      border: 1px solid rgba(255, 255, 255, 0.76);
+      background: var(--card-surface);
+      border: 1px solid var(--card-border-strong);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(16px) saturate(1.04);
     }
 
     .story-section-head {
@@ -1116,8 +1306,10 @@
     .story-card {
       padding: 12px 14px;
       border-radius: 18px;
-      background: linear-gradient(145deg, rgba(255, 253, 248, 0.88), rgba(241, 246, 241, 0.58));
-      border: 1px solid rgba(23, 50, 74, 0.08);
+      background: linear-gradient(145deg, var(--story-surface-top), var(--story-surface-bottom));
+      border: 1px solid var(--card-border-soft);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(16px) saturate(1.04);
       display: grid;
       gap: 8px;
     }
@@ -1167,7 +1359,7 @@
       align-items: center;
       padding: 5px 10px;
       border-radius: 999px;
-      background: rgba(20, 49, 74, 0.08);
+      background: var(--fact-pill-surface);
       color: var(--muted);
       font-size: 11px;
       font-weight: 700;
@@ -1191,8 +1383,10 @@
     .story-empty {
       padding: 16px;
       border-radius: 18px;
-      background: rgba(255, 255, 255, 0.46);
-      border: 1px solid rgba(255, 255, 255, 0.72);
+      background: var(--card-surface);
+      border: 1px solid var(--card-border-strong);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(14px) saturate(1.04);
       font-size: 13px;
       line-height: 1.65;
       color: var(--muted);
@@ -1200,13 +1394,13 @@
 
     .mission-shell {
       display: grid;
-      gap: 28px;
+      gap: 34px;
     }
 
     .mission-header {
-      padding: 18px 20px 16px;
+      padding: 22px 24px 20px;
       display: grid;
-      gap: 12px;
+      gap: 14px;
     }
 
     .mission-header-top {
@@ -1235,7 +1429,7 @@
       font-size: clamp(24px, 3.2vw, 38px);
       line-height: 0.98;
       letter-spacing: -0.05em;
-      font-family: "Iowan Old Style", "Baskerville", "Times New Roman", "Songti SC", serif;
+      font-family: "Noto Serif", "Songti SC", serif;
       font-weight: 600;
     }
 
@@ -1264,38 +1458,44 @@
       gap: 6px;
       padding: 5px 10px;
       border-radius: 999px;
-      background: rgba(23, 50, 74, 0.07);
+      background: var(--glass-soft);
       color: var(--ink);
       font-size: 11px;
       line-height: 1.4;
       font-weight: 700;
       white-space: nowrap;
-      border: 1px solid rgba(23, 50, 74, 0.08);
+      border: 1px solid var(--panel-border);
     }
 
     .mission-chip.ok {
-      background: rgba(62, 139, 120, 0.12);
+      background: var(--chip-ok-surface);
       color: var(--ok);
       border-color: rgba(62, 139, 120, 0.14);
     }
 
     .mission-chip.warn {
-      background: rgba(183, 132, 45, 0.14);
+      background: var(--chip-warn-surface);
       color: var(--warn);
       border-color: rgba(183, 132, 45, 0.16);
     }
 
     .mission-chip.off {
-      background: rgba(132, 148, 160, 0.12);
+      background: var(--chip-neutral-surface);
       color: var(--off);
       border-color: rgba(132, 148, 160, 0.14);
     }
 
+    body[data-theme="lilies"] .mission-chip.off {
+      background: var(--glass-muted);
+      color: rgba(230, 242, 235, 0.82);
+      border-color: rgba(255, 255, 255, 0.14);
+    }
+
     .mission-facts {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 24px;
-      margin-top: 6px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 28px;
+      margin-top: 10px;
     }
 
     .mission-fact {
@@ -1303,9 +1503,9 @@
       gap: 4px;
       padding: 14px 16px;
       border-radius: 16px;
-      background: rgba(255, 255, 255, 0.68);
-      border: 1px solid rgba(23, 50, 74, 0.1);
-      box-shadow: 0 10px 24px rgba(23, 50, 74, 0.05);
+      background: color-mix(in srgb, var(--glass-soft) 84%, transparent 16%);
+      border: 1px solid var(--panel-border);
+      box-shadow: inset 0 1px 0 var(--panel-highlight);
       min-width: 0;
     }
 
@@ -1326,21 +1526,21 @@
     .mission-main-grid {
       display: grid;
       grid-template-columns: minmax(320px, 0.36fr) minmax(0, 0.64fr);
-      gap: 18px;
+      gap: 24px;
       align-items: start;
-      margin-top: 6px;
+      margin-top: 10px;
     }
 
     .mission-left-column,
     .mission-right-column {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 20px;
       min-width: 0;
     }
 
     .mission-stack-card {
-      padding: 16px 18px 18px;
+      padding: 18px 20px 20px;
       display: grid;
       gap: 12px;
     }
@@ -1371,8 +1571,8 @@
     .mission-list-item {
       padding: 12px 13px;
       border-radius: 16px;
-      background: rgba(255, 255, 255, 0.58);
-      border: 1px solid rgba(23, 50, 74, 0.08);
+      background: color-mix(in srgb, var(--glass-soft) 84%, transparent 16%);
+      border: 1px solid var(--panel-border);
       display: grid;
       gap: 4px;
       min-width: 0;
@@ -1405,7 +1605,7 @@
       align-items: center;
       padding: 4px 9px;
       border-radius: 999px;
-      background: rgba(23, 50, 74, 0.07);
+      background: var(--chip-neutral-surface);
       color: var(--ink);
       font-size: 10px;
       font-weight: 700;
@@ -1415,17 +1615,17 @@
     .mission-list-empty {
       padding: 14px 15px;
       border-radius: 16px;
-      background: rgba(255, 255, 255, 0.48);
-      border: 1px solid rgba(23, 50, 74, 0.08);
+      background: var(--glass-muted);
+      border: 1px solid var(--panel-border);
       color: var(--muted);
       font-size: 12px;
       line-height: 1.6;
     }
 
     .run-card {
-      padding: 18px 20px 20px;
+      padding: 20px 22px 22px;
       display: grid;
-      gap: 12px;
+      gap: 14px;
     }
 
     .run-card-head {
@@ -1525,8 +1725,8 @@
       gap: 4px;
       padding: 12px 13px;
       border-radius: 16px;
-      background: rgba(255, 255, 255, 0.58);
-      border: 1px solid rgba(23, 50, 74, 0.08);
+      background: color-mix(in srgb, var(--glass-soft) 84%, transparent 16%);
+      border: 1px solid var(--panel-border);
       min-width: 0;
     }
 
@@ -1552,10 +1752,10 @@
 
     .console-button {
       appearance: none;
-      border: 1px solid rgba(23, 50, 74, 0.10);
+      border: 1px solid var(--panel-border);
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.76);
-      color: var(--ink);
+      background: color-mix(in srgb, var(--glass-soft) 84%, transparent 16%);
+      color: var(--accent-strong);
       padding: 8px 13px;
       font-size: 11px;
       font-weight: 800;
@@ -1566,8 +1766,8 @@
 
     .console-button:hover {
       transform: translateY(-1px);
-      background: rgba(255, 255, 255, 0.92);
-      border-color: rgba(62, 139, 120, 0.26);
+      background: var(--accent-soft);
+      border-color: color-mix(in srgb, var(--panel-border) 70%, var(--accent-strong) 30%);
     }
 
     .control-feed {
@@ -1576,16 +1776,17 @@
     }
 
     .control-feed-item {
-      padding: 10px 12px;
-      border-radius: 14px;
-      background: rgba(255, 255, 255, 0.54);
-      border: 1px solid rgba(23, 50, 74, 0.08);
+      padding: 14px 15px;
+      border-radius: 18px;
+      background: var(--feed-surface);
+      border: 1px solid var(--panel-border);
       display: grid;
-      gap: 4px;
+      gap: 6px;
+      box-shadow: inset 0 1px 0 var(--panel-highlight);
     }
 
     .control-feed-item strong {
-      font-size: 12px;
+      font-size: 13px;
       line-height: 1.45;
       overflow-wrap: anywhere;
     }
@@ -1600,7 +1801,7 @@
     #mission-bottom-grid {
       display: grid;
       grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr) minmax(280px, 1fr);
-      gap: 16px;
+      gap: 22px;
     }
 
     #mission-bottom-grid .panel {
@@ -1613,8 +1814,8 @@
 
     .tree-shell {
       display: grid;
-      gap: 10px;
-      padding: 16px 18px 18px;
+      gap: 12px;
+      padding: 18px 20px 20px;
     }
 
     .tree-line {
@@ -1635,7 +1836,7 @@
       height: 14px;
       margin-top: 3px;
       border-radius: 999px;
-      background: rgba(62, 139, 120, 0.18);
+      background: var(--tree-marker-surface);
       border: 1px solid rgba(62, 139, 120, 0.26);
     }
 
@@ -1656,8 +1857,8 @@
 
     .inspector-shell {
       display: grid;
-      gap: 14px;
-      padding: 16px 18px 18px;
+      gap: 16px;
+      padding: 18px 20px 20px;
     }
 
     .inspector-stack {
@@ -1672,9 +1873,9 @@
     }
 
     .judgment-shell {
-      padding: 16px 18px 18px;
+      padding: 18px 20px 20px;
       display: grid;
-      gap: 12px;
+      gap: 14px;
     }
 
     details {
@@ -1713,19 +1914,21 @@
       border-radius: 999px;
       font-size: 12px;
       font-weight: 600;
-      background: rgba(255, 255, 255, 0.72);
-      border: 1px solid rgba(23, 50, 74, 0.10);
+      background: var(--chip-surface);
+      border: 1px solid var(--chip-border);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(12px) saturate(1.04);
       color: var(--ink);
     }
 
     .health-chip.warn {
-      background: rgba(183, 132, 45, 0.12);
+      background: var(--health-warn-surface);
       color: var(--warn);
       border-color: rgba(183, 132, 45, 0.20);
     }
 
     .health-chip.stagnant {
-      background: rgba(198, 80, 50, 0.12);
+      background: var(--health-stagnant-surface);
       color: #b84c2d;
       border-color: rgba(198, 80, 50, 0.20);
     }
@@ -1735,7 +1938,7 @@
       position: relative;
       height: 14px;
       border-radius: 6px;
-      background: rgba(23, 50, 74, 0.04);
+      background: var(--heatmap-track-surface);
       overflow: hidden;
       margin-top: 6px;
     }
@@ -1760,18 +1963,18 @@
       padding: 3px 8px;
       border-radius: 999px;
       font-weight: 600;
-      background: rgba(23, 50, 74, 0.06);
+      background: var(--pipeline-stage-surface);
       color: var(--muted);
       white-space: nowrap;
     }
 
     .pipeline-stage.ok {
-      background: rgba(47, 126, 99, 0.12);
+      background: var(--pipeline-ok-surface);
       color: var(--ok);
     }
 
     .pipeline-stage.warn {
-      background: rgba(183, 132, 45, 0.12);
+      background: var(--pipeline-warn-surface);
       color: var(--warn);
     }
 
@@ -1782,9 +1985,9 @@
 
     /* ═══ Execution card (merged console + run) ═══ */
     .execution-card {
-      padding: 18px 20px 20px;
+      padding: 20px 22px 22px;
       display: grid;
-      gap: 14px;
+      gap: 16px;
     }
 
     .execution-header {
@@ -1801,8 +2004,10 @@
       gap: 3px;
       padding: 10px 12px;
       border-radius: 14px;
-      background: rgba(255, 255, 255, 0.58);
-      border: 1px solid rgba(23, 50, 74, 0.08);
+      background: var(--card-surface);
+      border: 1px solid var(--card-border-soft);
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(14px) saturate(1.04);
     }
 
     .bench-tile-label {
@@ -1843,8 +2048,10 @@
     .campaign-benchmark-side {
       border-radius: 16px;
       border: 1px solid rgba(23, 50, 74, 0.08);
-      background: rgba(255, 255, 255, 0.58);
+      background: var(--card-surface);
       padding: 14px 16px;
+      box-shadow: var(--card-shadow-soft);
+      backdrop-filter: blur(14px) saturate(1.04);
     }
 
     .campaign-benchmark-grid {
@@ -1892,7 +2099,7 @@
       font-size: 12px;
       line-height: 1.3;
       border: 1px solid rgba(23, 50, 74, 0.08);
-      background: rgba(255, 255, 255, 0.72);
+      background: var(--chip-surface);
       color: var(--ink);
     }
 
@@ -1915,6 +2122,30 @@
     @media (max-width: 1040px) {
       .campaign-benchmark-top {
         grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 1360px) {
+      .mission-header-top {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 16px;
+      }
+
+      .mission-header-side {
+        justify-items: start;
+      }
+
+      .mission-chip-row {
+        justify-content: flex-start;
+      }
+
+      .theme-toggle {
+        justify-self: start;
+      }
+
+      .mission-main-grid {
+        grid-template-columns: minmax(280px, 0.42fr) minmax(0, 0.58fr);
       }
     }
 
@@ -1947,12 +2178,82 @@
     }
 
     .context-tab-button.active {
-      color: var(--ink);
-      border-bottom-color: var(--ok);
+      color: var(--accent-strong);
+      border-bottom-color: color-mix(in srgb, var(--accent-strong) 72%, rgba(255,255,255,0.2) 28%);
+    }
+
+    .timeline-relative {
+      justify-self: end;
+      margin-top: 2px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: var(--glass-soft);
+      border: 1px solid var(--panel-border);
+      color: var(--accent-strong);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .timeline-live {
+      position: relative;
+      padding-left: 16px;
+    }
+
+    .timeline-live::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 6px;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--ok);
+      box-shadow: 0 0 0 0 rgba(62, 139, 120, 0.55);
+      animation: timeline-pulse 1.8s ease-out infinite;
+    }
+
+    @keyframes timeline-pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(62, 139, 120, 0.55);
+      }
+      80% {
+        box-shadow: 0 0 0 12px rgba(62, 139, 120, 0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(62, 139, 120, 0);
+      }
+    }
+
+    body[data-theme="lilies"] .projection-svg,
+    body[data-theme="lilies"] .joint-series-svg {
+      background:
+        linear-gradient(180deg, rgba(9, 20, 17, 0.78), rgba(16, 35, 28, 0.68)),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0));
+    }
+
+    body[data-theme="lilies"] .joint-table th,
+    body[data-theme="lilies"] .joint-table td,
+    body[data-theme="lilies"] .moonshot-table td,
+    body[data-theme="lilies"] .moonshot-table th {
+      border-bottom-color: rgba(255, 255, 255, 0.10);
     }
 
     .context-tab-panel {
       padding: 18px 22px 22px;
+    }
+
+    @media (max-width: 1280px) {
+      .mission-main-grid,
+      #mission-bottom-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .mission-left-column,
+      .mission-right-column {
+        gap: 18px;
+      }
     }
 
     @media (max-width: 1120px) {
@@ -2050,12 +2351,18 @@
             <h1>AutoBci</h1>
             <span class="mission-chip off" id="mission-mode-chip">等待数据</span>
           </div>
-          <div id="mission-subtitle" class="mission-subtitle">页面会优先读取 `mission_control`，没有时回退到当前的控制面和主线状态。</div>
+          <div id="mission-subtitle" class="mission-subtitle">核心指标、当前执行、Current Campaign、Framework Benchmark 和决策链路共用同一份状态数据。</div>
         </div>
-        <div class="mission-chip-row" id="mission-header-chips">
-          <span class="mission-chip off">Topic Inbox</span>
-          <span class="mission-chip off">Queue</span>
-          <span class="mission-chip off">Judgment</span>
+        <div class="mission-header-side">
+          <div class="theme-toggle" aria-label="切换页面风格">
+            <button class="theme-button active" type="button" data-theme="wheatfield">莫奈麦田</button>
+            <button class="theme-button" type="button" data-theme="lilies">睡莲</button>
+          </div>
+          <div class="mission-chip-row" id="mission-header-chips">
+            <span class="mission-chip off">Topic Inbox</span>
+            <span class="mission-chip off">Queue</span>
+            <span class="mission-chip off">Judgment</span>
+          </div>
         </div>
       </div>
       <div class="mission-facts">
@@ -2242,18 +2549,18 @@
 
       <section class="panel context-tabs" style="margin-top: 18px;">
         <div class="context-tab-bar">
-          <button class="context-tab-button active" data-tab="research-tree">研究分支树</button>
-          <button class="context-tab-button" data-tab="thinking">决策链路</button>
+          <button class="context-tab-button" data-tab="research-tree">研究分支树</button>
+          <button class="context-tab-button active" data-tab="thinking">决策链路</button>
           <button class="context-tab-button" data-tab="artifacts">实验产物</button>
         </div>
-        <div id="tab-research-tree" class="context-tab-panel">
+        <div id="tab-research-tree" class="context-tab-panel" style="display:none">
           <div class="panel-note" id="research-tree-note" style="margin-bottom: 12px;">当前研究树会优先展示 mission_control。</div>
           <div id="research-tree" class="tree-shell">
             <div class="mission-list-empty">当前还没有研究树内容。</div>
           </div>
         </div>
-        <div id="tab-thinking" class="context-tab-panel" style="display:none">
-          <div class="panel-note" style="margin-bottom: 12px;">Thinker / Planner / Worker / Judgment 的结构化链路。</div>
+        <div id="tab-thinking" class="context-tab-panel">
+          <div class="panel-note" style="margin-bottom: 12px;">Director / Executor / Research Memory 的真实交互历史。</div>
           <div id="thinking-timeline" class="control-feed">
             <div class="mission-list-empty">当前还没有思考链路。</div>
           </div>
@@ -2303,24 +2610,27 @@
   <script>
     const COLORS = {
       ink: "#17324a",
-      muted: "#667481",
-      grid: "rgba(23, 50, 74, 0.10)",
-      discarded: "rgba(23, 50, 74, 0.16)",
-      kept: "#3e8b78",
-      keptStroke: "rgba(27, 91, 74, 0.42)",
-      running: "#73bca1",
+      muted: "#6c665d",
+      grid: "rgba(117, 91, 0, 0.10)",
+      discarded: "rgba(115, 108, 98, 0.24)",
+      discardedStroke: "rgba(98, 90, 78, 0.36)",
+      kept: "#287e73",
+      keptStroke: "rgba(20, 101, 92, 0.48)",
+      running: "#66aba0",
+      smoke: "rgba(191, 128, 48, 0.22)",
+      smokeStroke: "rgba(177, 113, 28, 0.60)",
       reference: "#b8842d",
       rmse: "#c66d2e",
       truth: "#4e6fae",
       truthFaint: "rgba(78, 111, 174, 0.18)",
       prediction: "#c66d2e",
       predictionFaint: "rgba(198, 109, 46, 0.18)",
-      branch0: "#9ba7b4",
-      branch0Fill: "rgba(155, 167, 180, 0.20)",
-      branch1: "#86a9c9",
-      branch1Fill: "rgba(134, 169, 201, 0.18)",
-      branch2: "#95b89f",
-      branch2Fill: "rgba(149, 184, 159, 0.18)",
+      branch0: "#8f98aa",
+      branch0Fill: "rgba(143, 152, 170, 0.16)",
+      branch1: "#7e99bf",
+      branch1Fill: "rgba(126, 153, 191, 0.15)",
+      branch2: "#8ea7a0",
+      branch2Fill: "rgba(142, 167, 160, 0.14)",
     };
 
     function escapeHtml(value) {
@@ -2360,6 +2670,17 @@
         hour: "2-digit",
         minute: "2-digit",
       });
+    }
+
+    function formatRelativeTime(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "-";
+      const diffSeconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+      if (diffSeconds < 60) return "刚刚";
+      if (diffSeconds < 3600) return `${Math.max(1, Math.floor(diffSeconds / 60))} 分钟前`;
+      if (diffSeconds < 86400) return `${Math.max(1, Math.floor(diffSeconds / 3600))} 小时前`;
+      return `${Math.max(1, Math.floor(diffSeconds / 86400))} 天前`;
     }
 
     function statusTone(hasTraining, hasMission, stage) {
@@ -2488,10 +2809,15 @@
       }
 
       if (mode === "focus") {
-        const fill = point.is_running_best ? COLORS.kept : COLORS.discarded;
-        const stroke = point.is_running_best ? COLORS.keptStroke : "rgba(20, 49, 74, 0.12)";
+        const isSmoke = Boolean(point.is_smoke);
+        const fill = point.is_running_best
+          ? COLORS.kept
+          : (isSmoke ? COLORS.smoke : COLORS.discarded);
+        const stroke = point.is_running_best
+          ? COLORS.keptStroke
+          : (isSmoke ? COLORS.smokeStroke : COLORS.discardedStroke);
         const radius = point.is_running_best ? 5.5 : 3.5;
-        if (point.is_smoke) {
+        if (isSmoke) {
           const r = point.is_running_best ? 4.5 : 3;
           return `
             <g>
@@ -2508,13 +2834,13 @@
         `;
       }
 
-      const fallbackStroke = mode === "legacy" ? "rgba(109, 128, 148, 0.40)" : "rgba(184, 132, 45, 0.40)";
+      const fallbackStroke = mode === "legacy" ? "rgba(180, 195, 210, 0.25)" : (mode === "mainline" ? "var(--ok)" : "rgba(184, 132, 45, 0.40)");
       const strokeColor = customColor || fallbackStroke;
-      const radius = mode === "legacy" ? 2.2 : 1.8;
+      const radius = mode === "legacy" ? 1.8 : (mode === "mainline" ? 4.0 : 1.8);
       return `
-        <g opacity="0.6">
+        <g opacity="${mode === "mainline" ? "0.95" : "0.4"}">
           <title>${escapeHtml(title)}</title>
-          <circle cx="${x}" cy="${y}" r="${radius}" fill="transparent" stroke="${strokeColor}" stroke-width="1.2" />
+          <circle cx="${x}" cy="${y}" r="${radius}" fill="${mode === "mainline" ? "var(--ok)" : "transparent"}" stroke="${mode === "mainline" ? "rgba(255,255,255,0.8)" : strokeColor}" stroke-width="${mode === "mainline" ? "1.5" : "1.2"}" />
         </g>
       `;
     }
@@ -2523,7 +2849,12 @@
       const comparisonGroup = String(series?.comparison_group || "").trim();
       const palette = paletteForOverlay(series, index);
       if (comparisonGroup === "gait_phase_eeg") {
-        return { stroke: COLORS.running, width: 1.8, opacity: 0.30, dash: "6 4" };
+        return { 
+          stroke: series?.color_hex || palette.stroke || COLORS.running, 
+          width: 2.2, 
+          opacity: 0.65, 
+          dash: "" 
+        };
       }
       if (comparisonGroup === "legacy_continuous_mainline") {
         return {
@@ -2552,13 +2883,17 @@
           // Sort chronologically to find true historical SOTAs
           const sortedPoints = [...points].sort((a, b) => new Date(a.recorded_at || a._timeMs || 0) - new Date(b.recorded_at || b._timeMs || 0));
           const bestRunIds = new Set();
+          const sotaPoints = [];
           let currentMax = -Infinity;
           
           sortedPoints.forEach(p => {
              const val = Number(p.value);
+             // Instead of STRICTLY strictly greater, we allow capturing the top envelope (local maxima)
+             // by ensuring we only record a new envelope point if it's the max we've seen so far.
              if (val > currentMax) {
                  currentMax = val;
                  bestRunIds.add(p.run_id);
+                 sotaPoints.push(p);
              }
           });
 
@@ -2567,11 +2902,17 @@
              const spoofPoint = { ...point, is_running_best: isBest };
              return renderChartPointGlyph(spoofPoint, scale, left, top, width, height, "legacy-scatter", style.stroke);
           }).join("");
-          return `<g opacity="1">${pointLayer}</g>`;
+          
+          // Connect only the historical SOTA points (the envelope)
+          // Use stepPath logic instead of straight lines to show plateau behavior
+          const pathLayer = sotaPoints.length > 0 ? `<path d="${buildStepPath(sotaPoints, scale, left, top, width, height)}" fill="none" stroke="${style.stroke}" stroke-width="${style.width}" stroke-dasharray="${style.dash || ""}" opacity="${style.opacity}" />` : "";
+          
+          return `<g opacity="1">${pathLayer}${pointLayer}</g>`;
         }
 
         // We only want to draw points for background/reference series, NOT paths/lines.
         const pointLayer = points.map((point) => renderChartPointGlyph(point, scale, left, top, width, height, mode, style.stroke)).join("");
+        
         return `
           <g opacity="${style.opacity}">
             ${pointLayer}
@@ -2631,10 +2972,52 @@
             return `<line x1="${x}" y1="${top}" x2="${x}" y2="${height - bottom}" stroke="${COLORS.grid}" stroke-width="1" />`;
           }).join("")}
           ${renderChartSeries(referenceSeries, scale, left, top, innerWidth, innerHeight, "reference")}
-          ${renderChartSeries(legacySeries, scale, left, top, innerWidth, innerHeight, "legacy")}
-          ${renderChartSeries(gaitSeries, scale, left, top, innerWidth, innerHeight, "legacy")}
-          ${stepPath ? `<path d="${stepPath}" fill="none" stroke="${options.runningColor || COLORS.running}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />` : ""}
-          ${points.map((point) => renderChartPointGlyph(point, scale, left, top, innerWidth, innerHeight, "focus")).join("")}
+          ${
+            (() => {
+              // Extract ALL points from legacy, mainline (gait), and currently running
+              const allPoints = [
+                ...legacySeries.flatMap(s => s.points || []),
+                ...gaitSeries.flatMap(s => s.points || []),
+                ...points,
+                ...running
+              ].sort((a, b) => new Date(a.recorded_at || a._timeMs || 0) - new Date(b.recorded_at || b._timeMs || 0));
+              
+              if (allPoints.length === 0) return "";
+              
+              // Calculate the ABSOLUTE global upper envelope across the entire chart
+              const envelopePoints = [];
+              let currentMax = -Infinity;
+              const globalBestIds = new Set();
+              
+              allPoints.forEach(p => {
+                const val = Number(p.value);
+                // ONLY keep points that strictly increase the global maximum across ALL tasks
+                if (val > currentMax) {
+                  currentMax = val;
+                  envelopePoints.push(p);
+                  globalBestIds.add(p.run_id);
+                }
+              });
+              
+              // Also draw the background points (the ones that didn't make it to the envelope)
+              // so the chart isn't completely empty below the line, but keep them very faint
+              const backgroundLayer = allPoints
+                .filter(p => !globalBestIds.has(p.run_id))
+                .map(point => renderChartPointGlyph(point, scale, left, top, innerWidth, innerHeight, "legacy", "rgba(180, 195, 210, 0.25)"))
+                .join("");
+              
+              // Draw the points that belong to the envelope
+              const pointLayer = envelopePoints
+                .map(point => renderChartPointGlyph(point, scale, left, top, innerWidth, innerHeight, "mainline", "var(--ok)"))
+                .join("");
+                
+              // Draw ONE single continuous line connecting the global envelope points across the whole chart
+              // Use a subtle gradient or solid bright color depending on the theme
+              const pathLayer = `<path d="${buildLinePath(envelopePoints, scale, left, top, innerWidth, innerHeight)}" fill="none" stroke="var(--ok)" stroke-width="2.5" opacity="0.85" stroke-linejoin="round" stroke-linecap="round" />`;
+              
+              return `<g>${backgroundLayer}${pathLayer}${pointLayer}</g>`;
+            })()
+          }
         </svg>
       `;
 
@@ -2715,7 +3098,35 @@
       }).join("");
     }
 
-    let activeContextTab = "research-tree";
+    let activeContextTab = "thinking";
+
+    function applyVisualTheme(theme) {
+      const nextTheme = theme === "lilies" ? "lilies" : "wheatfield";
+      document.body.dataset.theme = nextTheme;
+      document.querySelectorAll(".theme-button").forEach((button) => {
+        const isActive = button.dataset.theme === nextTheme;
+        button.classList.toggle("active", isActive);
+        button.setAttribute("aria-pressed", isActive ? "true" : "false");
+      });
+      try {
+        window.localStorage.setItem("autobci-dashboard-theme", nextTheme);
+      } catch (error) {
+        console.debug("theme persistence unavailable", error);
+      }
+    }
+
+    function wireThemeToggle() {
+      let theme = "wheatfield";
+      try {
+        theme = window.localStorage.getItem("autobci-dashboard-theme") || theme;
+      } catch (error) {
+        console.debug("theme lookup unavailable", error);
+      }
+      applyVisualTheme(theme);
+      document.querySelectorAll(".theme-button").forEach((button) => {
+        button.addEventListener("click", () => applyVisualTheme(button.dataset.theme));
+      });
+    }
 
     function switchContextTab(tabId) {
       activeContextTab = tabId;
@@ -2983,6 +3394,8 @@
 
     let latestStatusPayload = null;
     let controlActionPending = false;
+    let dashboardDataMode = "live";
+    let livePollTimer = null;
 
     function firstDefinedText(...values) {
       for (const value of values) {
@@ -3058,13 +3471,18 @@
         modeChip.className = `mission-chip ${tone === "healthy" || tone === "ok" ? "ok" : (tone === "high" || tone === "critical" || tone === "warn" ? "warn" : "off")}`;
       }
       if (subtitle) {
-        subtitle.textContent = firstDefinedText(
+        const coreSummary = firstDefinedText(
           mission?.summary,
           controlPlane?.flow_note,
           operator?.planner_summary,
           operator?.effect_note,
-          "页面会优先读取 mission_control，没有时回退到当前的控制面和主线状态。",
+          "核心指标、当前执行、Current Campaign、Framework Benchmark 和决策链路共用同一份状态数据。",
         );
+        if (dashboardDataMode === "snapshot" && latestStatusPayload?.exported_at) {
+          subtitle.textContent = `当前显示的是只读快照，导出时间 ${displayText(latestStatusPayload?.exported_at_local || formatLocalDateTime(latestStatusPayload?.exported_at), "-")} · ${coreSummary}`;
+        } else {
+          subtitle.textContent = coreSummary;
+        }
       }
       if (missionId) {
         missionId.textContent = firstDefinedText(
@@ -3379,14 +3797,22 @@
     }
 
     function renderThinkingTimeline(mission) {
-      const rows = asArray(mission?.thinking_trace);
-      renderCardList("thinking-timeline", rows, "当前还没有思考链路。", (item) => `
-        <article class="control-feed-item">
-          <strong>${escapeHtml(firstDefinedText(item?.role, "Trace"))}</strong>
-          <span>${escapeHtml(firstDefinedText(item?.summary, "当前还没有结构化摘要。"))}</span>
-          <span>${escapeHtml(firstDefinedText(item?.detail, item?.recorded_at, "-"))}</span>
-        </article>
-      `, 8);
+      const rows = asArray(mission?.interaction_history || mission?.thinking_trace);
+      renderCardList("thinking-timeline", rows, "当前还没有决策链路。", (item, index) => {
+        const recordedAt = firstDefinedText(item?.recorded_at_local, "-");
+        const recordedAtRaw = firstDefinedText(item?.recorded_at, "");
+        const relative = recordedAtRaw && recordedAtRaw !== "-" ? formatRelativeTime(recordedAtRaw) : "-";
+        return `
+          <article class="control-feed-item ${index === 0 ? "timeline-live" : ""}" data-role="${escapeHtml(firstDefinedText(item?.role, "Trace"))}" data-recorded-at="${escapeHtml(recordedAtRaw)}">
+            <strong>${escapeHtml(recordedAt)} · ${escapeHtml(firstDefinedText(item?.role, "Trace"))}</strong>
+            <span>${escapeHtml(firstDefinedText(item?.title, "当前还没有结构化动作。"))}</span>
+            <span>${escapeHtml(firstDefinedText(item?.detail, "-"))}</span>
+            <span>结果：${escapeHtml(firstDefinedText(item?.result, "-"))}</span>
+            <span>下一步：${escapeHtml(firstDefinedText(item?.next, "-"))}</span>
+            <span class="timeline-relative">${escapeHtml(relative)}</span>
+          </article>
+        `;
+      }, 8);
     }
 
     function renderArtifactInspectorSummary(data) {
@@ -4328,6 +4754,24 @@
       });
     }
 
+    function applyDashboardMode() {
+      const isSnapshot = dashboardDataMode === "snapshot";
+      const controls = document.getElementById("control-buttons");
+      const taskInputLabel = document.querySelector('label.console-field[for="task-input"]');
+      const responseBox = document.getElementById("control-response");
+      if (controls) {
+        controls.hidden = isSnapshot;
+      }
+      if (taskInputLabel) {
+        taskInputLabel.hidden = isSnapshot;
+      }
+      if (responseBox && isSnapshot) {
+        responseBox.textContent = `当前显示的是只读快照，导出时间 ${displayText(latestStatusPayload?.exported_at_local || formatLocalDateTime(latestStatusPayload?.exported_at), "-")}。`;
+      } else if (responseBox && !responseBox.textContent.trim()) {
+        responseBox.textContent = "控制台会把动作结果显示在这里。";
+      }
+    }
+
     async function triggerControlAction(action) {
       if (controlActionPending) return;
       const responseBox = document.getElementById("control-response");
@@ -4386,22 +4830,55 @@
       });
     }
 
+    function refreshTimelineRelativeTimes() {
+      document.querySelectorAll("#thinking-timeline [data-recorded-at]").forEach((node) => {
+        const value = node.getAttribute("data-recorded-at");
+        const label = node.querySelector(".timeline-relative");
+        if (label) {
+          label.textContent = value ? formatRelativeTime(value) : "-";
+        }
+      });
+    }
+
     async function loadStatus() {
-      const response = await fetch("/api/status", { cache: "no-store" });
-      const data = await response.json();
+      let data = null;
+      let mode = "live";
+      try {
+        const snapshotResponse = await fetch("status.snapshot.json", { cache: "no-store" });
+        if (snapshotResponse.ok) {
+          data = await snapshotResponse.json();
+          mode = "snapshot";
+        }
+      } catch (error) {
+        console.debug("snapshot unavailable, falling back to live status", error);
+      }
+      if (!data) {
+        const response = await fetch("/api/status", { cache: "no-store" });
+        data = await response.json();
+        mode = "live";
+      }
+      dashboardDataMode = mode;
       latestStatusPayload = data;
       updateStatus(data);
+      applyDashboardMode();
+      refreshTimelineRelativeTimes();
     }
 
     wireMissionControlConsole();
+    wireThemeToggle();
     document.querySelectorAll(".context-tab-button").forEach(btn => {
       btn.addEventListener("click", () => switchContextTab(btn.dataset.tab));
     });
+    switchContextTab(activeContextTab);
     loadStatus().catch((error) => {
       console.error(error);
       document.getElementById("hero-formal-note").textContent = String(error);
     });
-    setInterval(() => {
+    livePollTimer = setInterval(() => {
+      if (dashboardDataMode === "snapshot") {
+        refreshTimelineRelativeTimes();
+        return;
+      }
       loadStatus().catch((error) => console.error(error));
     }, 60000);
   </script>

@@ -10,6 +10,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-json", required=True)
     parser.add_argument("--dataset-name", default="gait_phase_clean64")
     parser.add_argument("--score", type=float, default=0.5)
+    parser.add_argument("--reference-version", default="gait_phase_reference_provisional_v1_0717_0719")
     return parser.parse_args()
 
 
@@ -46,7 +47,7 @@ def main() -> None:
             "model_family": "chance_baseline",
             "feature_families": ["lmp", "hg_power"],
             "signal_preprocess": "car_notch_bandpass",
-            "reference_version": "gait_phase_reference_provisional_v1_0717_0719",
+            "reference_version": str(args.reference_version),
         },
         "experiment_track": "cross_session_mainline",
     }

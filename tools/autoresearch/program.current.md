@@ -18,9 +18,17 @@
 - 当前算法家族：
   - `feature_tcn`
   - `feature_gru`
+  - `DeepConvNet`（端到端原始脑电）
+  - `TMSANet`（端到端时序注意力）
+  - `Sinc-Conformer` 先作为外部对照算法名保留
+- 当前端到端原始脑电入口：
+  - `artifacts/share/gait_phase_eeg_historical_raw32_500hz_package`
+  - 输入是 `32 x 250` 的原始脑电窗
+  - 对应 `32` 导、`500 Hz`、标签点前 `0.5 秒`
 - 当前执行顺序：
   - 先跑 `32` 条 smoke：`2` 个家族 × `4` 个窗长 × `4` 个时延
   - 再按 `val balanced_accuracy` 只晋升前 `2` 条 timing 组合做 formal
+  - 端到端原始脑电线先补最小 smoke，对比 `DeepConvNet / TMSANet`
 - 当前搜索节奏：
   - 起步先搜 1 轮
   - smoke 每写入 1 条结果，就更新一次搜索/判断链

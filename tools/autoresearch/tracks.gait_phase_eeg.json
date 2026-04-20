@@ -2,6 +2,42 @@
   "review_cadence": "hourly",
   "tracks": [
     {
+      "track_id": "gait_phase_eeg_raw_deepconvnet_hist073",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "raw_deepconvnet",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 0.5,
+      "global_lag_ms": 0,
+      "track_goal": "DeepConvNet 在历史 0.7375 同口径的原始脑电包上，先做 smoke 检查端到端模型能不能稳定高于随机。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_raw_classifier.py --package-dir artifacts/share/gait_phase_eeg_historical_raw32_500hz_package --algorithm-family deepconvnet --epochs 8 --batch-size 64 --hidden-size 64 --dropout 0.1 --seed 7",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_raw_classifier.py --package-dir artifacts/share/gait_phase_eeg_historical_raw32_500hz_package --algorithm-family deepconvnet --epochs 16 --batch-size 64 --hidden-size 64 --dropout 0.1 --seed 7",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
+      "track_id": "gait_phase_eeg_raw_tmsanet_hist073",
+      "topic_id": "gait_phase_eeg_classification",
+      "runner_family": "raw_tmsanet",
+      "internet_research_enabled": true,
+      "validated": true,
+      "window_seconds": 0.5,
+      "global_lag_ms": 0,
+      "track_goal": "TMSANet 在历史 0.7375 同口径的原始脑电包上，先做 smoke 检查时序注意力模型能不能把摆动期拉起来。",
+      "promotion_target": "gait_phase_eeg_classification",
+      "smoke_command": ".venv/bin/python scripts/train_gait_phase_eeg_raw_classifier.py --package-dir artifacts/share/gait_phase_eeg_historical_raw32_500hz_package --algorithm-family tmsanet --epochs 8 --batch-size 64 --hidden-size 64 --dropout 0.1 --seed 7",
+      "formal_command": ".venv/bin/python scripts/train_gait_phase_eeg_raw_classifier.py --package-dir artifacts/share/gait_phase_eeg_historical_raw32_500hz_package --algorithm-family tmsanet --epochs 16 --batch-size 64 --hidden-size 64 --dropout 0.1 --seed 7",
+      "allowed_change_scope": [
+        "scripts",
+        "src/bci_autoresearch/models",
+        "src/bci_autoresearch/eval"
+      ]
+    },
+    {
       "track_id": "gait_phase_eeg_feature_gru_w0p5_l0",
       "topic_id": "gait_phase_eeg_classification",
       "runner_family": "feature_gru",

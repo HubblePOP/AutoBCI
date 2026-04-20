@@ -5609,6 +5609,7 @@ def build_current_campaign_benchmark(
 
 
 def build_status() -> dict[str, Any]:
+    exported_at = utc_now().replace(microsecond=0).isoformat().replace("+00:00", "Z")
     dataset = read_dataset_summary()
     process = get_training_process()
     log_path = TRAIN_LOG_PATH if TRAIN_LOG_PATH.exists() else LEGACY_TRAIN_LOG_PATH
@@ -5777,6 +5778,8 @@ def build_status() -> dict[str, Any]:
     }
 
     return {
+        "exported_at": exported_at,
+        "exported_at_local": format_local_timestamp(exported_at),
         "updated_at": local_now().isoformat(),
         "dataset": dataset,
         "training": {
@@ -5981,50 +5984,134 @@ def build_mission_control_payload(
                 "chips": chips,
             }
         )
-    thinking_trace = [
-        {
-            "role": "Thinker",
-            "recorded_at": format_local_timestamp(latest_event.get("recorded_at")),
-            "summary": current_problem,
-            "detail": f"证据 {len(latest_retrieval.get('relevant_evidence') or [])} 条 · 当前 topic {len(topics)} 个。",
-        },
-        {
-            "role": "Planner",
-            "recorded_at": format_local_timestamp(latest_event.get("recorded_at")),
-            "summary": as_text_or_none(latest_decision.get("research_judgment_delta")) or "当前还没有新的队列判断。",
-            "detail": "推荐队列：" + (" / ".join(recommended_queue[:3]) if recommended_queue else "当前还没有推荐队列。") + (f" · 阻塞原因：{', '.join(stale_reason_codes[:3])}" if stale_reason_codes else ""),
-        },
-        {
-            "role": "Worker",
-            "recorded_at": format_local_timestamp(autoresearch_status.get("updated_at")),
-            "summary": "当前执行：" + (
-                as_text_or_none(payload.get("current_track_id"))
-                or as_text_or_none(autoresearch_status.get("active_track_id"))
-                or "当前还没有 active track。"
-            ),
-            "detail": "阶段：" + (
-                as_text_or_none(payload.get("stage"))
-                or as_text_or_none(autoresearch_status.get("stage"))
-                or "未知"
-            ),
-        },
-    ]
-    thinking_trace.append(
-        {
-            "role": "Materializer",
-            "recorded_at": format_local_timestamp(latest_decision.get("recorded_at")),
-            "summary": "主题物化：" + (", ".join(f"{key} {value}" for key, value in sorted(state_counts.items()) if value) or "当前还没有 topic 物化结果。"),
-            "detail": "当前物化状态：" + (", ".join(sorted(state_counts.keys())) if state_counts else "还没形成新的 runnable track。"),
-        }
+    def _append_history(
+        rows: list[dict[str, Any]],
+        *,
+        role: str,
+        recorded_at: Any,
+        title: str,
+        detail: str,
+        result: str = "-",
+        next_step: str = "-",
+        source: str = "",
+    ) -> None:
+        if not title and not detail:
+            return
+        rows.append(
+            {
+                "role": role,
+                "recorded_at": as_text_or_none(recorded_at) or "",
+                "recorded_at_local": format_local_timestamp(recorded_at),
+                "title": title,
+                "detail": detail or "-",
+                "result": result or "-",
+                "next": next_step or "-",
+                "source": source or "-",
+            }
+        )
+
+    interaction_history: list[dict[str, Any]] = []
+
+    action_role_map = {
+        "think": "Director",
+        "execute": "Executor",
+        "pause": "Executor",
+        "resume": "Executor",
+        "end": "Executor",
+    }
+    action_title_map = {
+        "think": "提交思考动作",
+        "execute": "执行队列动作",
+        "pause": "暂停当前执行",
+        "resume": "恢复当前执行",
+        "end": "结束当前轮次",
+    }
+    _append_history(
+        interaction_history,
+        role="Research Memory",
+        recorded_at=latest_retrieval.get("recorded_at"),
+        title="更新当前问题与证据",
+        detail=current_problem,
+        result=f"证据 {len(latest_retrieval.get('relevant_evidence') or [])} 条 · 当前 topic {len(topics)} 个。",
+        next_step=as_text_or_none(latest_decision.get("research_judgment_delta")) or (recommended_queue[0] if recommended_queue else "等待新的判断。"),
+        source="latest_retrieval_packet",
     )
-    thinking_trace.append(
-        {
-            "role": "Judgment",
-            "recorded_at": format_local_timestamp(latest_judgment.get("recorded_at")),
-            "summary": as_text_or_none(latest_judgment.get("reason")) or "当前还没有新的 judgment。",
-            "detail": as_text_or_none(latest_judgment.get("next_recommended_action")) or "等待下一轮判断。",
-        },
+    _append_history(
+        interaction_history,
+        role="Director",
+        recorded_at=latest_decision.get("recorded_at"),
+        title="更新推荐执行队列",
+        detail=as_text_or_none(latest_decision.get("research_judgment_delta")) or "当前还没有新的队列判断。",
+        result="推荐队列：" + (" / ".join(recommended_queue[:3]) if recommended_queue else "当前还没有推荐队列。"),
+        next_step=as_text_or_none(latest_judgment.get("next_recommended_action")) or (recommended_queue[0] if recommended_queue else "等待下一轮判断。"),
+        source="latest_decision_packet",
     )
+    _append_history(
+        interaction_history,
+        role="Director",
+        recorded_at=latest_judgment.get("recorded_at"),
+        title="写入 judgment",
+        detail=as_text_or_none(latest_judgment.get("reason")) or "当前还没有新的 judgment。",
+        result=(
+            "topic "
+            + (as_text_or_none(latest_judgment.get("topic_id")) or "-")
+            + (
+                f" · hypothesis {latest_judgment.get('hypothesis_id')}"
+                if as_text_or_none(latest_judgment.get("hypothesis_id"))
+                else ""
+            )
+        ),
+        next_step=as_text_or_none(latest_judgment.get("next_recommended_action")) or "等待下一轮判断。",
+        source="latest_judgment_updates",
+    )
+    _append_history(
+        interaction_history,
+        role="Executor",
+        recorded_at=autoresearch_status.get("updated_at"),
+        title="当前执行",
+        detail=(
+            as_text_or_none(payload.get("current_track_id"))
+            or as_text_or_none(autoresearch_status.get("active_track_id"))
+            or "当前还没有 active track。"
+        ),
+        result=(
+            as_text_or_none(payload.get("stage"))
+            or as_text_or_none(autoresearch_status.get("stage"))
+            or "未知"
+        ),
+        next_step=recommended_queue[0] if recommended_queue else "等待 Director 下发下一步。",
+        source="autoresearch_status",
+    )
+    for event in recent_events:
+        action = as_text_or_none(event.get("action")) or "event"
+        recorded_at = as_text_or_none(event.get("recorded_at"))
+        if not recorded_at:
+            continue
+        _append_history(
+            interaction_history,
+            role=action_role_map.get(action, "Research Memory"),
+            recorded_at=recorded_at,
+            title=action_title_map.get(action, "记录控制事件"),
+            detail=as_text_or_none(event.get("message")) or "当前还没有控制消息。",
+            result="成功" if bool(event.get("ok")) else "失败",
+            next_step=as_text_or_none(latest_judgment.get("next_recommended_action")) or (recommended_queue[0] if recommended_queue else "等待下一步"),
+            source="control_event",
+        )
+    history_priority = {
+        "latest_decision_packet": 5,
+        "latest_judgment_updates": 4,
+        "latest_retrieval_packet": 3,
+        "autoresearch_status": 2,
+        "control_event": 1,
+    }
+    interaction_history.sort(
+        key=lambda item: (
+            parse_timestamp(item.get("recorded_at")) or datetime.min.replace(tzinfo=timezone.utc),
+            history_priority.get(as_text_or_none(item.get("source")) or "", 0),
+        ),
+        reverse=True,
+    )
+    interaction_history = interaction_history[:8]
 
     mission_control = {
         "current_problem": current_problem,
@@ -6084,7 +6171,8 @@ def build_mission_control_payload(
         "available_actions": ["think", "execute", "pause", "resume", "end"],
         "recent_control_events": recent_events,
         "control_events": recent_events,
-        "thinking_trace": thinking_trace,
+        "interaction_history": interaction_history,
+        "thinking_trace": interaction_history,
         "pipeline_status": {
             "stages": [
                 {"id": "topics", "label": "Topic Inbox", "count": len(topics), "tone": "ok" if topics else "off"},

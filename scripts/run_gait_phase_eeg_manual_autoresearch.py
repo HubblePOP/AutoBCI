@@ -88,9 +88,19 @@ def select_top_formal_candidates(
     *,
     top_k: int,
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    def _sort_key(item: tuple[dict[str, Any], dict[str, Any]]) -> tuple[float, float, float]:
+        metrics = dict(item[1] or {})
+        val_metrics = dict(metrics.get("val_metrics") or {})
+        per_class_recall = dict(val_metrics.get("per_class_recall") or {})
+        return (
+            float(metrics.get("val_primary_metric") or 0.0),
+            float(val_metrics.get("macro_f1") or 0.0),
+            float(per_class_recall.get("swing") or 0.0),
+        )
+
     ordered = sorted(
         smoke_rows,
-        key=lambda item: float(item[1].get("val_primary_metric") or 0.0),
+        key=_sort_key,
         reverse=True,
     )
     return ordered[: max(0, int(top_k))]
@@ -103,6 +113,9 @@ def load_research_context(paths) -> tuple[list[dict[str, Any]], list[dict[str, A
 
 
 def _feature_family_from_metrics(metrics: dict[str, Any]) -> str:
+    input_mode = str(metrics.get("input_mode") or metrics.get("train_summary", {}).get("input_mode") or "").strip()
+    if input_mode == "raw_ecog":
+        return "raw_ecog"
     train_summary = dict(metrics.get("train_summary") or {})
     families = train_summary.get("feature_families") or []
     if isinstance(families, list) and families:

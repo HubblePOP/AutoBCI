@@ -9,33 +9,87 @@ import scripts.run_gait_phase_eeg_manual_autoresearch as manual
 
 
 class GaitPhaseEegManualAutoresearchTests(unittest.TestCase):
-    def test_timing_scan_manifest_contains_32_gru_tcn_tracks(self) -> None:
+    def test_timing_scan_manifest_contains_gru_tcn_tracks_plus_raw_end_to_end_variants(self) -> None:
         payload = json.loads(Path("/Users/mac/Code/AutoBci/tools/autoresearch/tracks.gait_phase_eeg.json").read_text(encoding="utf-8"))
         tracks = list(payload.get("tracks") or [])
 
-        self.assertEqual(len(tracks), 32)
-        self.assertEqual({track["runner_family"] for track in tracks}, {"feature_gru", "feature_tcn"})
+        self.assertGreaterEqual(len(tracks), 34)
+        runner_families = {track["runner_family"] for track in tracks}
+        self.assertIn("feature_gru", runner_families)
+        self.assertIn("feature_tcn", runner_families)
+        self.assertIn("raw_deepconvnet", runner_families)
+        self.assertIn("raw_tmsanet", runner_families)
         self.assertEqual(
-            {manual.extract_timing_signature_from_track(track)["window_seconds"] for track in tracks},
+            {
+                manual.extract_timing_signature_from_track(track)["window_seconds"]
+                for track in tracks
+                if str(track.get("runner_family")) in {"feature_gru", "feature_tcn"}
+            },
             {0.5, 1.0, 2.0, 3.0},
         )
         self.assertEqual(
-            {manual.extract_timing_signature_from_track(track)["global_lag_ms"] for track in tracks},
+            {
+                manual.extract_timing_signature_from_track(track)["global_lag_ms"]
+                for track in tracks
+                if str(track.get("runner_family")) in {"feature_gru", "feature_tcn"}
+            },
             {0.0, 100.0, 250.0, 500.0},
         )
 
-    def test_select_top_formal_candidates_prefers_best_balanced_accuracy(self) -> None:
+    def test_feature_family_summary_uses_raw_ecog_when_raw_classifier_reports_raw_input(self) -> None:
+        feature_family = manual._feature_family_from_metrics(
+            {
+                "input_mode": "raw_ecog",
+                "train_summary": {
+                    "model_family": "deepconvnet",
+                    "input_mode": "raw_ecog",
+                },
+            }
+        )
+        self.assertEqual(feature_family, "raw_ecog")
+
+    def test_select_top_formal_candidates_uses_macro_f1_and_swing_recall_tiebreaks(self) -> None:
         smoke_rows = [
-            ({"track_id": "gait_phase_eeg_feature_tcn_w0p5_l100"}, {"val_primary_metric": 0.58}),
-            ({"track_id": "gait_phase_eeg_feature_gru_w1p0_l250"}, {"val_primary_metric": 0.67}),
-            ({"track_id": "gait_phase_eeg_feature_tcn_w3p0_l500"}, {"val_primary_metric": 0.61}),
+            (
+                {"track_id": "gait_phase_eeg_feature_tcn_concat_w0p5_l0"},
+                {
+                    "val_primary_metric": 0.67,
+                    "val_metrics": {
+                        "macro_f1": 0.62,
+                        "per_class_recall": {"support": 0.84, "swing": 0.53},
+                    },
+                },
+            ),
+            (
+                {"track_id": "gait_phase_eeg_feature_tcn_masked_mean_w0p5_l0"},
+                {
+                    "val_primary_metric": 0.67,
+                    "val_metrics": {
+                        "macro_f1": 0.62,
+                        "per_class_recall": {"support": 0.81, "swing": 0.58},
+                    },
+                },
+            ),
+            (
+                {"track_id": "gait_phase_eeg_feature_gru_attention_w0p5_l-100"},
+                {
+                    "val_primary_metric": 0.67,
+                    "val_metrics": {
+                        "macro_f1": 0.60,
+                        "per_class_recall": {"support": 0.83, "swing": 0.57},
+                    },
+                },
+            ),
         ]
 
         selected = manual.select_top_formal_candidates(smoke_rows, top_k=2)
 
         self.assertEqual(
             [track["track_id"] for track, _metrics in selected],
-            ["gait_phase_eeg_feature_gru_w1p0_l250", "gait_phase_eeg_feature_tcn_w3p0_l500"],
+            [
+                "gait_phase_eeg_feature_tcn_masked_mean_w0p5_l0",
+                "gait_phase_eeg_feature_tcn_concat_w0p5_l0",
+            ],
         )
 
     def test_build_result_row_records_window_and_lag_for_dashboard(self) -> None:

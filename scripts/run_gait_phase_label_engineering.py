@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 from typing import Any, Callable
 
+import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 
@@ -23,10 +24,16 @@ from plot_marker_pose_yz import render_pose_yz
 from bci_autoresearch.data.splits import load_dataset_config
 from bci_autoresearch.data.vicon_loader import load_vicon_csv
 from bci_autoresearch.eval.gait_phase import (
-    build_extrema_reference_labels,
+    HYSTERESIS_REFERENCE_METHOD_CONFIG,
+    build_hysteresis_reference_labels,
+    compute_hysteresis_reference_trace,
     score_trial_prediction,
     summarize_label_records,
+    summarize_reference_label_quality,
 )
+
+
+DEFAULT_REFERENCE_VERSION = "gait_phase_reference_provisional_v2_0717_0719_hysteresis"
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,7 +58,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--reference-version",
         type=str,
-        default="gait_phase_reference_provisional_v1",
+        default=DEFAULT_REFERENCE_VERSION,
     )
     return parser.parse_args()
 
@@ -90,7 +97,7 @@ def build_reference_trial_record(*, session_id: str, split: str, time_s: np.ndar
         "n_samples": int(time_s.shape[0]),
         "sample_rate_hz": sample_rate_hz,
         "toe_labels": {
-            signal_name: build_extrema_reference_labels(
+            signal_name: build_hysteresis_reference_labels(
                 time_s=time_s,
                 toe_z=toe_signal,
                 signal_name=signal_name,
@@ -432,17 +439,176 @@ def render_session_plot_bundle(
         paths.append(str(plot_path))
 
     pose_path = output_dir / f"{prefix}-pose-yz.png"
-    render_pose_yz(
-        kinematics=np.asarray(kinematics, dtype=np.float32),
-        names=names,
+    required_pose_names = {f"RSHO_{axis}" for axis in ("x", "y", "z")}
+    if required_pose_names.issubset(set(names)):
+        render_pose_yz(
+            kinematics=np.asarray(kinematics, dtype=np.float32),
+            names=names,
+            time_s=np.asarray(time_s, dtype=np.float64),
+            frame_idx=select_pose_frame_idx(candidate_record, np.asarray(time_s, dtype=np.float64)),
+            session_id=session_id,
+            output_path=pose_path,
+            center_marker="RSHO",
+            center_mode="per_frame",
+        )
+        paths.append(str(pose_path))
+    return paths
+
+
+def select_dense_debug_window(
+    *,
+    intervals: list[dict[str, int]],
+    n_samples: int,
+    sample_rate_hz: float,
+) -> tuple[int, int]:
+    window_samples = max(1, int(round(float(sample_rate_hz) * 2.0)))
+    if intervals:
+        target = min(intervals, key=lambda item: int(item["end_idx"]) - int(item["start_idx"]))
+        center = (int(target["start_idx"]) + int(target["end_idx"])) // 2
+    else:
+        center = max(0, int(n_samples) // 2)
+    start_idx = max(0, center - window_samples // 2)
+    end_idx = min(int(n_samples), start_idx + window_samples)
+    start_idx = max(0, end_idx - window_samples)
+    return int(start_idx), int(end_idx)
+
+
+def render_dense_debug_plot(
+    *,
+    session_id: str,
+    signal_name: str,
+    time_s: np.ndarray,
+    toe_signal: np.ndarray,
+    reference_record: dict[str, Any],
+    output_path: Path,
+) -> None:
+    trace = compute_hysteresis_reference_trace(
         time_s=np.asarray(time_s, dtype=np.float64),
-        frame_idx=select_pose_frame_idx(candidate_record, np.asarray(time_s, dtype=np.float64)),
-        session_id=session_id,
-        output_path=pose_path,
-        center_marker="RSHO",
-        center_mode="per_frame",
+        toe_z=np.asarray(toe_signal, dtype=np.float32),
+        signal_name=signal_name,
     )
-    paths.append(str(pose_path))
+    intervals = list(reference_record["toe_labels"][signal_name]["swing_intervals"])
+    start_idx, end_idx = select_dense_debug_window(
+        intervals=intervals,
+        n_samples=int(time_s.shape[0]),
+        sample_rate_hz=float(trace["sample_rate_hz"]),
+    )
+
+    x = np.asarray(time_s[start_idx:end_idx], dtype=np.float64)
+    raw = np.asarray(trace["raw_signal"][start_idx:end_idx], dtype=np.float32)
+    smooth = np.asarray(trace["smoothed_signal"][start_idx:end_idx], dtype=np.float32)
+    maxima = [
+        int(idx)
+        for idx in np.asarray(trace["local_maxima_idx"], dtype=np.int64).tolist()
+        if start_idx <= int(idx) < end_idx
+    ]
+    minima = [
+        int(idx)
+        for idx in np.asarray(trace["local_minima_idx"], dtype=np.int64).tolist()
+        if start_idx <= int(idx) < end_idx
+    ]
+
+    plt.rcParams["font.family"] = "Arial Unicode MS"
+    fig, ax = plt.subplots(figsize=(12, 4.8))
+    fig.patch.set_facecolor("white")
+    ax.plot(x, raw, color="#2f67b0", lw=1.8, label="原始曲线")
+    ax.plot(x, smooth, color="#d97706", lw=2.1, label="75ms 平滑曲线")
+    ax.axhline(float(trace["high_threshold"]), color="#b91c1c", ls="--", lw=1.1, alpha=0.85, label="高阈值")
+    ax.axhline(float(trace["low_threshold"]), color="#0f766e", ls="--", lw=1.1, alpha=0.85, label="低阈值")
+
+    for idx in maxima:
+        ax.axvline(float(time_s[idx]), color="#f59e0b", lw=0.8, alpha=0.35)
+    for idx in minima:
+        ax.axvline(float(time_s[idx]), color="#14b8a6", lw=0.8, alpha=0.28)
+    for interval in intervals:
+        local_start = max(start_idx, int(interval["start_idx"]))
+        local_end = min(end_idx, int(interval["end_idx"]))
+        if local_end <= local_start:
+            continue
+        ax.axvspan(float(time_s[local_start]), float(time_s[local_end - 1]), color="#f3c18a", alpha=0.18, lw=0)
+        ax.axvline(float(time_s[local_start]), color="#e67e22", lw=1.6, alpha=0.9)
+        ax.axvline(float(time_s[local_end - 1]), color="#e67e22", lw=1.6, alpha=0.9)
+
+    foot_label = "右后脚趾" if signal_name == "RHTOE_z" else "右前脚趾"
+    ax.set_title(f"{foot_label} 2 秒放大窗口：滞回阈值摆动切分", loc="left", fontsize=14, color="#17324a", pad=10)
+    ax.text(
+        0.0,
+        1.03,
+        f"{session_id} · {x[0]:.2f}-{x[-1]:.2f} 秒 · 竖线是局部极值与切分边界",
+        transform=ax.transAxes,
+        fontsize=10,
+        color="#5b6d7f",
+    )
+    ax.set_xlabel("时间（秒）", fontsize=11, color="#17324a")
+    ax.set_ylabel("z 轴位置", fontsize=11, color="#17324a")
+    ax.grid(True, axis="y", alpha=0.22)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_color("#c5ced6")
+    ax.spines["bottom"].set_color("#c5ced6")
+    ax.tick_params(colors="#44596d", labelsize=10)
+    ax.legend(loc="upper right", fontsize=9, frameon=False)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=180, facecolor=fig.get_facecolor(), bbox_inches="tight")
+    plt.close(fig)
+
+
+def dense_debug_rank(summary: dict[str, Any]) -> tuple[float, float, float]:
+    signal_metrics = dict(summary.get("signal_metrics") or {})
+    violations = len(list(summary.get("quality_violations") or []))
+    short_ratio = max(float(metrics.get("short_swing_ratio") or 0.0) for metrics in signal_metrics.values()) if signal_metrics else 0.0
+    cadence = max(float(metrics.get("median_cadence_hz") or 0.0) for metrics in signal_metrics.values()) if signal_metrics else 0.0
+    return (float(violations), short_ratio, cadence)
+
+
+def build_dense_debug_plots(
+    *,
+    reference_rows: list[dict[str, Any]],
+    session_payloads: dict[str, dict[str, Any]],
+    output_dir: Path,
+    preferred_session_ids: list[str] | None = None,
+) -> list[str]:
+    if not reference_rows:
+        return []
+    summaries_by_session = {
+        row["session_id"]: summarize_reference_label_quality([row])
+        for row in reference_rows
+    }
+    session_ids = [row["session_id"] for row in reference_rows if row["session_id"] in session_payloads]
+    if not session_ids:
+        return []
+
+    preferred = next(
+        (
+            session_id
+            for session_id in (preferred_session_ids or [])
+            if session_id in session_payloads
+        ),
+        session_ids[0],
+    )
+    worst = max(session_ids, key=lambda session_id: dense_debug_rank(summaries_by_session[session_id]))
+    selected_session_ids: list[str] = []
+    for session_id in (preferred, worst):
+        if session_id not in selected_session_ids:
+            selected_session_ids.append(session_id)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[str] = []
+    for label, session_id in zip(("spotcheck", "worst"), selected_session_ids, strict=False):
+        payload = session_payloads[session_id]
+        for signal_name in ("RHTOE_z", "RFTOE_z"):
+            output_path = output_dir / f"{label}-{session_id}-{signal_name}-dense2s.png"
+            render_dense_debug_plot(
+                session_id=session_id,
+                signal_name=signal_name,
+                time_s=np.asarray(payload["time_s"], dtype=np.float64),
+                toe_signal=np.asarray(payload["toe_signals"][signal_name], dtype=np.float32),
+                reference_record=payload["reference_record"],
+                output_path=output_path,
+            )
+            paths.append(str(output_path))
     return paths
 
 
@@ -454,17 +620,26 @@ def render_report(payload: dict[str, Any]) -> str:
         f"- session_filter_patterns: {payload.get('session_filter_patterns')}",
         f"- session_count: {payload.get('session_count')}",
         f"- reference_version: {payload['reference_version']} ({payload['reference_status']})",
+        f"- reference_method_family: {payload['reference_method_family']}",
         f"- primary_metric: {payload['primary_metric']}",
         f"- reference_trial_usability_rate: {payload['reference_trial_usability_rate']:.4f}",
         f"- val_primary_metric: {payload['val_primary_metric']:.4f}",
         f"- test_primary_metric: {payload['test_primary_metric']:.4f}",
+        f"- quality_status: {payload['quality_status']}",
         f"- manual_spotcheck_status: {payload['manual_spotcheck_status']}",
         f"- manual_spotcheck_pass_rate: {payload.get('manual_spotcheck_pass_rate')}",
         f"- spotcheck_plot_count: {len(payload.get('spotcheck_plot_paths') or [])}",
         f"- exception_plot_count: {len(payload.get('exception_plot_paths') or [])}",
+        f"- dense_debug_plot_count: {len(payload.get('dense_debug_plot_paths') or [])}",
         "",
         "## Coverage",
         json.dumps(payload["coverage_breakdown"], ensure_ascii=False, indent=2),
+        "",
+        "## Reference Method Config",
+        json.dumps(payload["reference_method_config"], ensure_ascii=False, indent=2),
+        "",
+        "## Quality Summary",
+        json.dumps(payload["quality_summary"], ensure_ascii=False, indent=2),
         "",
         "## Stability",
         json.dumps(payload["stability_metrics"], ensure_ascii=False, indent=2),
@@ -583,6 +758,8 @@ def main() -> None:
 
     reference_summary = summarize_label_records(reference_rows)
     candidate_summary = summarize_label_records(candidate_rows)
+    quality_summary = summarize_reference_label_quality(reference_rows)
+    quality_status = str(quality_summary.get("quality_status") or "failed")
     reference_summary_path.write_text(json.dumps(reference_summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     candidate_summary_path.write_text(json.dumps(candidate_summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     stability_metrics = build_stability_summary(reference_rows=candidate_rows, variant_rows_by_name=variant_rows_by_name)
@@ -656,6 +833,14 @@ def main() -> None:
             )
         )
 
+    dense_debug_dir = artifacts_dir / "dense_debug"
+    dense_debug_plot_paths = build_dense_debug_plots(
+        reference_rows=reference_rows,
+        session_payloads=session_payloads,
+        output_dir=dense_debug_dir,
+        preferred_session_ids=spotcheck_session_ids or matched_session_ids,
+    )
+
     task_paths = [
         ROOT / "benchmarks" / "carnese" / "tasks" / "gait_phase_v1" / "task.md",
         ROOT / "benchmarks" / "carnese" / "tasks" / "gait_phase_v1" / "constraints.yaml",
@@ -671,12 +856,16 @@ def main() -> None:
         "target_space": "support_swing_phase",
         "reference_version": str(args.reference_version),
         "reference_status": "provisional",
+        "reference_method_family": "hysteresis_threshold",
+        "reference_method_config": dict(HYSTERESIS_REFERENCE_METHOD_CONFIG),
         "primary_metric": "reference_trial_usability_rate",
         "benchmark_primary_score": candidate_summary["benchmark_primary_score"],
         "reference_trial_usability_rate": candidate_summary["reference_trial_usability_rate"],
         "val_primary_metric": candidate_summary["val_primary_metric"],
         "test_primary_metric": candidate_summary["test_primary_metric"],
         "val_r": candidate_summary["val_primary_metric"],
+        "quality_summary": quality_summary,
+        "quality_status": quality_status,
         "coverage_breakdown": candidate_summary["coverage_breakdown"],
         "exception_counts": candidate_summary["exception_counts"],
         "split_metrics": candidate_summary["split_metrics"],
@@ -696,6 +885,7 @@ def main() -> None:
         "spotcheck_svg_paths": spotcheck_svg_paths,
         "spotcheck_plot_paths": spotcheck_plot_paths,
         "exception_plot_paths": exception_plot_paths,
+        "dense_debug_plot_paths": dense_debug_plot_paths,
         "spotcheck_session_ids": spotcheck_session_ids,
         "exception_session_ids": exception_session_ids,
         "task_pack_fingerprint": task_pack_fingerprint(task_paths),
@@ -715,6 +905,8 @@ def main() -> None:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
     report_path.write_text(render_report(payload), encoding="utf-8")
     print(json.dumps(payload, ensure_ascii=False, indent=2))
+    if quality_status != "passed":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

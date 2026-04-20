@@ -1,0 +1,185 @@
+{
+  "program_id": "gait_speed_0402_motion",
+  "topic_id": "gait_speed_0402_motion",
+  "label_mode": "coarse_speed_v1",
+  "review_cadence": "daily",
+  "motion_root": "/Volumes/Elements/bci/处理后的关节数据/20240402",
+  "coarse_speed_buckets": {
+    "slow": [
+      "12",
+      "15"
+    ],
+    "medium": [
+      "18",
+      "21"
+    ],
+    "fast": [
+      "24",
+      "24_30"
+    ]
+  },
+  "motion_files": [
+    {
+      "file_name": "walk_12km_01.xlsx",
+      "speed_tag": "12",
+      "speed_bucket": "slow"
+    },
+    {
+      "file_name": "walk_12km_02.xlsx",
+      "speed_tag": "12",
+      "speed_bucket": "slow"
+    },
+    {
+      "file_name": "walk_15km_01.xlsx",
+      "speed_tag": "15",
+      "speed_bucket": "slow"
+    },
+    {
+      "file_name": "walk_15km_02.xlsx",
+      "speed_tag": "15",
+      "speed_bucket": "slow"
+    },
+    {
+      "file_name": "walk_18km_01.xlsx",
+      "speed_tag": "18",
+      "speed_bucket": "medium"
+    },
+    {
+      "file_name": "walk_18km_03.xlsx",
+      "speed_tag": "18",
+      "speed_bucket": "medium"
+    },
+    {
+      "file_name": "walk_18km_04.xlsx",
+      "speed_tag": "18",
+      "speed_bucket": "medium"
+    },
+    {
+      "file_name": "walk_21km_02.xlsx",
+      "speed_tag": "21",
+      "speed_bucket": "medium"
+    },
+    {
+      "file_name": "walk_21km_03.xlsx",
+      "speed_tag": "21",
+      "speed_bucket": "medium"
+    },
+    {
+      "file_name": "walk_24_30km_01.xlsx",
+      "speed_tag": "24_30",
+      "speed_bucket": "fast"
+    },
+    {
+      "file_name": "walk_24km_01.xlsx",
+      "speed_tag": "24",
+      "speed_bucket": "fast"
+    }
+  ],
+  "speed_tag_counts": {
+    "12": 2,
+    "15": 2,
+    "18": 3,
+    "21": 2,
+    "24_30": 1,
+    "24": 1
+  },
+  "speed_bucket_counts": {
+    "slow": 4,
+    "medium": 5,
+    "fast": 2
+  },
+  "tracks": [
+    {
+      "track_id": "gait_speed_0402_motion_ridge",
+      "topic_id": "gait_speed_0402_motion",
+      "runner_family": "ridge",
+      "label_mode": "coarse_speed_v1",
+      "motion_scope": "20240402",
+      "speed_buckets": [
+        "slow",
+        "medium",
+        "fast"
+      ],
+      "track_goal": "先只做 20240402 的运动侧速度识别，用文件名里的速度档构造 coarse_speed_v1 的最小可用对照任务。",
+      "promotion_target": "gait_speed_0402_motion",
+      "internet_research_enabled": false,
+      "validated": true,
+      "smoke_command": ".venv/bin/python scripts/train_gait_speed_0402_motion_classifier.py --motion-root \"/Volumes/Elements/bci/处理后的关节数据/20240402\" --runner-family ridge --label-mode coarse_speed_v1 --output-json artifacts/monitor/gait_speed_0402_motion_ridge.json",
+      "formal_command": ".venv/bin/python scripts/train_gait_speed_0402_motion_classifier.py --motion-root \"/Volumes/Elements/bci/处理后的关节数据/20240402\" --runner-family ridge --label-mode coarse_speed_v1 --output-json artifacts/monitor/gait_speed_0402_motion_ridge.json",
+      "allowed_change_scope": [
+        "scripts",
+        "tools/autoresearch",
+        "tests"
+      ]
+    },
+    {
+      "track_id": "gait_speed_0402_motion_tree_xgboost",
+      "topic_id": "gait_speed_0402_motion",
+      "runner_family": "tree_xgboost",
+      "label_mode": "coarse_speed_v1",
+      "motion_scope": "20240402",
+      "speed_buckets": [
+        "slow",
+        "medium",
+        "fast"
+      ],
+      "track_goal": "先只做 20240402 的运动侧速度识别，用文件名里的速度档构造 coarse_speed_v1 的最小可用对照任务。",
+      "promotion_target": "gait_speed_0402_motion",
+      "internet_research_enabled": false,
+      "validated": true,
+      "smoke_command": ".venv/bin/python scripts/train_gait_speed_0402_motion_classifier.py --motion-root \"/Volumes/Elements/bci/处理后的关节数据/20240402\" --runner-family tree_xgboost --label-mode coarse_speed_v1 --output-json artifacts/monitor/gait_speed_0402_motion_tree_xgboost.json",
+      "formal_command": ".venv/bin/python scripts/train_gait_speed_0402_motion_classifier.py --motion-root \"/Volumes/Elements/bci/处理后的关节数据/20240402\" --runner-family tree_xgboost --label-mode coarse_speed_v1 --output-json artifacts/monitor/gait_speed_0402_motion_tree_xgboost.json",
+      "allowed_change_scope": [
+        "scripts",
+        "tools/autoresearch",
+        "tests"
+      ]
+    },
+    {
+      "track_id": "gait_speed_0402_motion_feature_gru",
+      "topic_id": "gait_speed_0402_motion",
+      "runner_family": "feature_gru",
+      "label_mode": "coarse_speed_v1",
+      "motion_scope": "20240402",
+      "speed_buckets": [
+        "slow",
+        "medium",
+        "fast"
+      ],
+      "track_goal": "先只做 20240402 的运动侧速度识别，用文件名里的速度档构造 coarse_speed_v1 的最小可用对照任务。",
+      "promotion_target": "gait_speed_0402_motion",
+      "internet_research_enabled": false,
+      "validated": true,
+      "smoke_command": ".venv/bin/python scripts/train_gait_speed_0402_motion_classifier.py --motion-root \"/Volumes/Elements/bci/处理后的关节数据/20240402\" --runner-family feature_gru --label-mode coarse_speed_v1 --output-json artifacts/monitor/gait_speed_0402_motion_feature_gru.json",
+      "formal_command": ".venv/bin/python scripts/train_gait_speed_0402_motion_classifier.py --motion-root \"/Volumes/Elements/bci/处理后的关节数据/20240402\" --runner-family feature_gru --label-mode coarse_speed_v1 --output-json artifacts/monitor/gait_speed_0402_motion_feature_gru.json",
+      "allowed_change_scope": [
+        "scripts",
+        "tools/autoresearch",
+        "tests"
+      ]
+    },
+    {
+      "track_id": "gait_speed_0402_motion_feature_tcn",
+      "topic_id": "gait_speed_0402_motion",
+      "runner_family": "feature_tcn",
+      "label_mode": "coarse_speed_v1",
+      "motion_scope": "20240402",
+      "speed_buckets": [
+        "slow",
+        "medium",
+        "fast"
+      ],
+      "track_goal": "先只做 20240402 的运动侧速度识别，用文件名里的速度档构造 coarse_speed_v1 的最小可用对照任务。",
+      "promotion_target": "gait_speed_0402_motion",
+      "internet_research_enabled": false,
+      "validated": true,
+      "smoke_command": ".venv/bin/python scripts/train_gait_speed_0402_motion_classifier.py --motion-root \"/Volumes/Elements/bci/处理后的关节数据/20240402\" --runner-family feature_tcn --label-mode coarse_speed_v1 --output-json artifacts/monitor/gait_speed_0402_motion_feature_tcn.json",
+      "formal_command": ".venv/bin/python scripts/train_gait_speed_0402_motion_classifier.py --motion-root \"/Volumes/Elements/bci/处理后的关节数据/20240402\" --runner-family feature_tcn --label-mode coarse_speed_v1 --output-json artifacts/monitor/gait_speed_0402_motion_feature_tcn.json",
+      "allowed_change_scope": [
+        "scripts",
+        "tools/autoresearch",
+        "tests"
+      ]
+    }
+  ]
+}
