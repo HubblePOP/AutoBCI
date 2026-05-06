@@ -17,27 +17,41 @@ import {
 
 test("loadProgramDocuments reads both program layers from the tools root", async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "autoresearch-program-"));
-  await mkdir(path.join(tempRoot, "docs"), { recursive: true });
+  await mkdir(path.join(tempRoot, "memory", "docs"), { recursive: true });
+  await mkdir(path.join(tempRoot, "programs", "gait_phase_binary_v0"), { recursive: true });
   const toolsRoot = path.join(tempRoot, "tools", "autoresearch");
   await mkdir(toolsRoot, { recursive: true });
-  await writeFile(path.join(tempRoot, "docs", "CONSTITUTION.md"), "# repo constitution\n", "utf8");
+  await writeFile(path.join(tempRoot, "memory", "docs", "CONSTITUTION.md"), "# repo constitution\n", "utf8");
   await writeFile(path.join(toolsRoot, "program.md"), "# execution contract\n", "utf8");
   await writeFile(path.join(toolsRoot, "program.current.md"), "# current campaign\n", "utf8");
+  await writeFile(
+    path.join(tempRoot, "programs", "gait_phase_binary_v0", "program.json"),
+    JSON.stringify({
+      program_id: "gait_phase_binary_v0",
+      version: "0.1",
+      status: "frozen",
+      research_goal: { task_type: "binary_classification" },
+      metrics: { primary: "test_balanced_accuracy" },
+    }),
+    "utf8",
+  );
 
   try {
     const docs = await loadProgramDocuments(toolsRoot);
-    assert.equal(docs.constitutionPath, path.join(tempRoot, "docs", "CONSTITUTION.md"));
+    assert.equal(docs.constitutionPath, path.join(tempRoot, "memory", "docs", "CONSTITUTION.md"));
     assert.equal(docs.derivedProgramPath, path.join(toolsRoot, "program.md"));
     assert.equal(docs.currentProgramPath, path.join(toolsRoot, "program.current.md"));
+    assert.equal(docs.programContractPath, path.join(tempRoot, "programs", "gait_phase_binary_v0", "program.json"));
     assert.match(docs.constitutionText, /repo constitution/);
     assert.match(docs.derivedProgramText, /execution contract/);
     assert.match(docs.currentProgramText, /current campaign/);
+    assert.match(docs.programContractText ?? "", /gait_phase_binary_v0/);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
 
-test("loadProgramDocuments fails loudly when docs/CONSTITUTION.md is missing", async () => {
+test("loadProgramDocuments fails loudly when memory/docs/CONSTITUTION.md is missing", async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "autoresearch-program-missing-"));
   const toolsRoot = path.join(tempRoot, "tools", "autoresearch");
   await mkdir(toolsRoot, { recursive: true });
@@ -57,9 +71,9 @@ test("loadProgramDocuments fails loudly when docs/CONSTITUTION.md is missing", a
 test("loadProgramDocuments fails loudly when program.current.md is missing", async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "autoresearch-program-missing-current-"));
   const toolsRoot = path.join(tempRoot, "tools", "autoresearch");
-  await mkdir(path.join(tempRoot, "docs"), { recursive: true });
+  await mkdir(path.join(tempRoot, "memory", "docs"), { recursive: true });
   await mkdir(toolsRoot, { recursive: true });
-  await writeFile(path.join(tempRoot, "docs", "CONSTITUTION.md"), "# repo constitution\n", "utf8");
+  await writeFile(path.join(tempRoot, "memory", "docs", "CONSTITUTION.md"), "# repo constitution\n", "utf8");
   await writeFile(path.join(toolsRoot, "program.md"), "# execution contract\n", "utf8");
 
   try {
@@ -256,12 +270,22 @@ test("buildCodexPrompt includes the program layers, track context, and output co
     iteration: 3,
     allowedDirs: ["/repo/scripts", "/repo/src/bci_autoresearch/models"],
     programDocuments: {
-      constitutionPath: "/repo/docs/CONSTITUTION.md",
+      constitutionPath: "/repo/memory/docs/CONSTITUTION.md",
       constitutionText: "# Constitution\nThe repo source of truth lives here.",
       derivedProgramPath: "/repo/tools/autoresearch/program.md",
       derivedProgramText: "# Execution Contract\nNever touch alignment.",
       currentProgramPath: "/repo/tools/autoresearch/program.current.md",
       currentProgramText: "# Current Campaign\nTrack A explores relative-origin targets.",
+      programContractPath: "/repo/programs/gait_phase_binary_v0/program.json",
+      programContractText: JSON.stringify({
+        program_id: "gait_phase_binary_v0",
+        version: "0.1",
+        status: "frozen",
+        research_goal: { task_type: "binary_classification" },
+        metrics: { primary: "test_balanced_accuracy" },
+        split_policy: { unit: "session" },
+        forbidden_actions: ["change_split_without_amendment"],
+      }),
     },
     track: {
       trackId: "relative_origin_xyz",
@@ -298,6 +322,11 @@ test("buildCodexPrompt includes the program layers, track context, and output co
   assert.match(prompt, /source of truth/);
   assert.match(prompt, /Never touch alignment/);
   assert.match(prompt, /Track A explores relative-origin targets/);
+  assert.match(prompt, /ProgramMD JSON/);
+  assert.match(prompt, /gait_phase_binary_v0/);
+  assert.match(prompt, /binary_classification/);
+  assert.match(prompt, /test_balanced_accuracy/);
+  assert.match(prompt, /change_split_without_amendment/);
 });
 
 test("buildCodexPrompt switches to a minimal closeout prompt when the campaign is in closeout mode", () => {
@@ -306,7 +335,7 @@ test("buildCodexPrompt switches to a minimal closeout prompt when the campaign i
     iteration: 3,
     allowedDirs: ["/repo/scripts"],
     programDocuments: {
-      constitutionPath: "/repo/docs/CONSTITUTION.md",
+      constitutionPath: "/repo/memory/docs/CONSTITUTION.md",
       constitutionText: "# Constitution\nThe repo source of truth lives here.",
       derivedProgramPath: "/repo/tools/autoresearch/program.md",
       derivedProgramText: "# Execution Contract\nNever touch alignment.",

@@ -1232,6 +1232,60 @@ class ControlPlaneCliTests(unittest.TestCase):
         self.assertEqual(snapshot["recommended_incubation"]["family"], "feature_cnn_lstm")
         self.assertEqual(snapshot["active_incubation_campaigns"][0]["campaign_id"], "mission-001-incubation-feature-cnn-lstm")
 
+    def test_platform_defaults_use_windows_appdata_roots(self) -> None:
+        from bci_autoresearch.platform_support import default_cache_root, default_execution_worktrees_root
+
+        env = {"LOCALAPPDATA": r"C:\Users\me\AppData\Local", "APPDATA": r"C:\Users\me\AppData\Roaming"}
+        cache_root = default_cache_root(platform_name="Windows", env=env)
+        worktrees_root = default_execution_worktrees_root(Path(r"C:\repo\AutoBci"), platform_name="Windows", env=env)
+
+        self.assertEqual(str(cache_root), r"C:\Users\me\AppData\Local/AutoBci/session_cache")
+        self.assertEqual(str(worktrees_root), r"C:\Users\me\AppData\Local/AutoBci/worktrees")
+
+    def test_control_plane_paths_do_not_hardcode_user_mac_worktree_root(self) -> None:
+        from bci_autoresearch.control_plane.paths import get_control_plane_paths
+
+        repo_root = self._build_repo_root()
+        paths = get_control_plane_paths(repo_root)
+
+        self.assertEqual(paths.execution_worktrees_root, repo_root.resolve().parent / ".hermes-worktrees" / "autobci")
+        self.assertNotIn("/Users/mac", str(paths.execution_worktrees_root))
+
+    def test_process_group_kwargs_are_platform_specific(self) -> None:
+        from bci_autoresearch.platform_support import detached_process_kwargs
+
+        self.assertEqual(detached_process_kwargs(platform_name="Linux"), {"start_new_session": True})
+        windows_kwargs = detached_process_kwargs(platform_name="Windows")
+        self.assertIn("creationflags", windows_kwargs)
+        self.assertNotIn("start_new_session", windows_kwargs)
+
+    def test_pause_resume_write_desired_state_on_windows_without_signal(self) -> None:
+        from bci_autoresearch.control_plane.commands import pause_runtime, resume_runtime
+        from bci_autoresearch.control_plane.paths import get_control_plane_paths
+
+        repo_root = self._build_repo_root()
+        paths = get_control_plane_paths(repo_root)
+        runtime_path = paths.runtime_state
+        runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+        runtime["pid"] = 12345
+        runtime_path.write_text(json.dumps(runtime, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        with (
+            patch("bci_autoresearch.control_plane.commands.is_windows", return_value=True),
+            patch("bci_autoresearch.control_plane.commands._pid_is_alive", return_value=True),
+            patch("bci_autoresearch.control_plane.commands._signal_pid") as signal_pid,
+        ):
+            pause_message = pause_runtime(paths)
+            resume_message = resume_runtime(paths)
+
+        signal_pid.assert_not_called()
+        updated = json.loads(runtime_path.read_text(encoding="utf-8"))
+        self.assertEqual(updated["desired_state"], "running")
+        self.assertIn("pause_requested_at", updated)
+        self.assertIn("resume_requested_at", updated)
+        self.assertIn("Windows", pause_message)
+        self.assertIn("Windows", resume_message)
+
 
 if __name__ == "__main__":
     unittest.main()

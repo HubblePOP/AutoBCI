@@ -1,6 +1,6 @@
 # Benchmark Carnese 执行派生契约
 
-本文件从 [/Users/mac/Code/AutoBci/docs/CONSTITUTION_BENCHMARK_GAIT_PHASE.md](/Users/mac/Code/AutoBci/docs/CONSTITUTION_BENCHMARK_GAIT_PHASE.md) 派生。
+本文件从 [/Users/mac/Code/AutoBci/memory/docs/CONSTITUTION_BENCHMARK_GAIT_PHASE.md](/Users/mac/Code/AutoBci/memory/docs/CONSTITUTION_BENCHMARK_GAIT_PHASE.md) 派生。
 
 ## 1. 长期不变量
 

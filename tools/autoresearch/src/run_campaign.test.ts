@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -14,6 +18,7 @@ import {
   summarizeThreadItemUsage,
   deriveTurnTelemetry,
   shouldTrackSkipCodexEdit,
+  runNativeAgentEditTurn,
 } from "./run_campaign.js";
 
 function acceptedSnapshot(runId = "") {
@@ -100,6 +105,217 @@ function track(trackId: string, runnerFamily = "xgboost") {
     skipCodexEdit: false,
   };
 }
+
+function campaignStatus() {
+  return {
+    campaign_id: "campaign-native-runtime",
+    started_at: "2026-04-08T00:00:00.000Z",
+    current_iteration: 0,
+    max_iterations: 2,
+    patience: 1,
+    stage: "editing",
+    active_track_id: "canonical_mainline_feature_lstm",
+    frozen_baseline: acceptedSnapshot("baseline"),
+    accepted_stable_best: acceptedSnapshot("stable-best"),
+    leading_unverified_candidate: acceptedSnapshot(),
+    accepted_best: acceptedSnapshot("stable-best"),
+    candidate: {
+      run_id: "",
+      stage: "editing",
+      track_id: "",
+      track_goal: "",
+      promotion_target: "",
+      hypothesis: "",
+      why_this_change: "",
+      changes_summary: "",
+      change_bucket: "",
+      track_comparison_note: "",
+      files_touched: [],
+      commands: [],
+      search_queries: [],
+      research_evidence: [],
+      smoke_metrics: null,
+      final_metrics: null,
+      allowed_scope_ok: true,
+      rollback_applied: false,
+      relevance_label: "",
+      relevance_reason: "",
+      decision: "",
+      next_step: "",
+      artifacts: [],
+      tool_usage_summary: null,
+      thinking_heartbeat_at: "",
+      last_retrieval_at: "",
+      last_decision_at: "",
+      last_judgment_at: "",
+      last_materialization_at: "",
+      last_smoke_at: "",
+      stale_reason_codes: [],
+      pivot_reason_codes: [],
+      search_budget_state: "healthy",
+    },
+    track_states: [trackRuntimeState("canonical_mainline_feature_lstm")],
+    current_command: "",
+    updated_at: "2026-04-08T00:00:00.000Z",
+    campaign_mode: "exploration",
+    budget_state: "healthy",
+    stop_reason: "none",
+    codex_thread_id: null,
+    patience_streak: 0,
+    last_error: null,
+    tool_usage_summary: null,
+    thinking_heartbeat_at: "",
+    last_retrieval_at: "",
+    last_decision_at: "",
+    last_judgment_at: "",
+    last_materialization_at: "",
+    last_smoke_at: "",
+    stale_reason_codes: [],
+    pivot_reason_codes: [],
+    search_budget_state: "healthy",
+  };
+}
+
+function programDocuments() {
+  return {
+    constitutionPath: "/repo/memory/docs/CONSTITUTION.md",
+    constitutionText: "constitution text",
+    derivedProgramPath: "/repo/tools/autoresearch/program.md",
+    derivedProgramText: "program text",
+    currentProgramPath: "/repo/tools/autoresearch/program.current.md",
+    currentProgramText: "current program text",
+  };
+}
+
+function spawnClose(exitCode: number, onSpawn?: (command: string, args: string[]) => Promise<void> | void) {
+  return (command: string, args: string[]) => {
+    const child = new EventEmitter() as any;
+    child.pid = 4242;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    queueMicrotask(async () => {
+      try {
+        await onSpawn?.(command, args);
+        child.emit("close", exitCode);
+      } catch (error) {
+        child.emit("error", error);
+      }
+    });
+    return child;
+  };
+}
+
+test("runNativeAgentEditTurn writes native input and returns Codex-compatible output", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "autobci-native-turn-"));
+  const calls: Array<{ command: string; args: string[] }> = [];
+
+  try {
+    const result = await runNativeAgentEditTurn({
+      campaignId: "campaign-native-runtime",
+      iteration: 2,
+      status: campaignStatus() as any,
+      track: track("canonical_mainline_feature_lstm", "feature_lstm") as any,
+      allowedDirs: ["/repo/scripts", "/repo/src/bci_autoresearch/models"],
+      programDocuments: programDocuments(),
+      repoRoot: "/repo",
+      runtimeConfig: {
+        pythonCommand: "/custom/python",
+        provider: "openai",
+        model: "gpt-5.1-codex",
+        runtime: "native-python-cli",
+      },
+      turnDir: tempDir,
+      spawnProcess: spawnClose(0, async (command, args) => {
+        calls.push({ command, args });
+        const inputPath = args[args.indexOf("--input") + 1];
+        const outputPath = args[args.indexOf("--output") + 1];
+        const input = JSON.parse(await readFile(inputPath, "utf8"));
+
+        assert.equal(input.campaignId, "campaign-native-runtime");
+        assert.equal(input.iteration, 2);
+        assert.equal(input.repoRoot, "/repo");
+        assert.equal(input.track.trackId, "canonical_mainline_feature_lstm");
+        assert.deepEqual(input.allowedDirs, ["/repo/scripts", "/repo/src/bci_autoresearch/models"]);
+        assert.equal(input.programDocuments.currentProgramText, "current program text");
+        assert.match(input.prompt, /当前状态/);
+        assert.equal(input.runtime.provider, "openai");
+        assert.equal(input.runtime.model, "gpt-5.1-codex");
+        assert.equal(input.runtime.runtime, "native-python-cli");
+
+        await writeFile(outputPath, JSON.stringify({
+          agent_session_id: "agent-session-001",
+          proposal: {
+            hypothesis: "Try a smaller causal feature decoder.",
+            why_this_change: "The current track needs a direct feature sequence comparison.",
+            changes_summary: "Edited the feature LSTM training entrypoint.",
+            change_bucket: "model-led",
+            track_comparison_note: "Still compared against the same canonical metric.",
+            files_touched: ["scripts/train_feature_lstm.py"],
+            next_step: "Run smoke.",
+            search_queries: [],
+            research_evidence: [],
+          },
+          items: [
+            {
+              id: "f1",
+              type: "file_change",
+              status: "completed",
+              changes: [{ path: "scripts/train_feature_lstm.py", kind: "update" }],
+            },
+          ],
+        }), "utf8");
+      }),
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.command, "/custom/python");
+    assert.deepEqual(calls[0]?.args.slice(0, 3), ["-m", "bci_autoresearch.agent_runtime", "edit-turn"]);
+    assert.equal(result.threadId, "agent-session-001");
+    assert.equal(result.proposal.change_bucket, "model-led");
+    assert.equal(result.proposal.files_touched[0], "scripts/train_feature_lstm.py");
+    assert.equal(result.items[0]?.type, "file_change");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("runNativeAgentEditTurn fails without requiring a real provider key", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "autobci-native-turn-fail-"));
+  try {
+    await assert.rejects(
+      runNativeAgentEditTurn({
+        campaignId: "campaign-native-runtime",
+        iteration: 1,
+        status: campaignStatus() as any,
+        track: track("canonical_mainline_feature_lstm", "feature_lstm") as any,
+        allowedDirs: ["/repo/scripts"],
+        programDocuments: programDocuments(),
+        repoRoot: "/repo",
+        runtimeConfig: {
+          pythonCommand: "python",
+          provider: "local",
+          model: "dry",
+          runtime: "native-python-cli",
+        },
+        turnDir: tempDir,
+        spawnProcess: () => {
+          const child = new EventEmitter() as any;
+          child.pid = 4243;
+          child.stdout = new EventEmitter();
+          child.stderr = new EventEmitter();
+          queueMicrotask(() => {
+            child.stderr.emit("data", Buffer.from("missing output", "utf8"));
+            child.emit("close", 17);
+          });
+          return child;
+        },
+      }),
+      /native agent edit-turn failed.*missing output/s,
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
 
 test("classifyCommandRelevance treats test files as supporting changes instead of a hard block", () => {
   const relevance = classifyCommandRelevance(

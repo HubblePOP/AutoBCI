@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import math
+import sys
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,12 @@ from .registry import (
     normalize_algorithm_family,
     resolve_direction_spec,
 )
+from .messages import read_recent_messages
 from .runtime_store import read_json, read_jsonl, read_latest_packet, read_topics_inbox
+
+
+_framework_benchmark_cache: dict[str, Any] | None = None
+_framework_benchmark_mtime: float = 0.0
 
 
 def _as_text(value: Any) -> str:
@@ -55,6 +61,30 @@ def _normalize_candidate_strings(values: Any) -> list[str]:
         if label:
             normalized.append(label)
     return normalized
+
+
+def _latest_program_state(paths: AutoBciControlPlanePaths) -> dict[str, Any]:
+    if not paths.programs_dir.exists():
+        return {}
+    candidates = sorted(
+        [path for path in paths.programs_dir.glob("*/program.json") if path.is_file()],
+        key=lambda path: path.stat().st_mtime_ns,
+        reverse=True,
+    )
+    if not candidates:
+        return {}
+    program = read_json(candidates[0], {})
+    if not isinstance(program, dict):
+        return {}
+    return {
+        "program_id": _as_text(program.get("program_id")),
+        "version": _as_text(program.get("version")),
+        "status": _as_text(program.get("status")),
+        "task_type": _as_text((program.get("research_goal") or {}).get("task_type") if isinstance(program.get("research_goal"), dict) else ""),
+        "primary_metric": _as_text((program.get("metrics") or {}).get("primary") if isinstance(program.get("metrics"), dict) else ""),
+        "path": str(candidates[0]),
+        "frozen_at": _as_text(program.get("frozen_at")),
+    }
 
 
 def infer_method_variant_label(track_state: dict[str, Any]) -> str:
@@ -350,6 +380,92 @@ def _parse_timestamp(value: Any) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+def _build_framework_benchmark(paths: AutoBciControlPlanePaths) -> dict[str, Any] | None:
+    global _framework_benchmark_cache, _framework_benchmark_mtime
+
+    ledger_paths = [
+        path
+        for path in (
+            paths.experiment_ledger,
+            paths.repo_root / "tools" / "autoresearch" / "experiment_ledger.jsonl",
+        )
+        if path.exists()
+    ]
+    if not ledger_paths:
+        return None
+
+    current_mtime = max(path.stat().st_mtime for path in ledger_paths)
+    if _framework_benchmark_cache is not None and current_mtime <= _framework_benchmark_mtime:
+        return _framework_benchmark_cache
+
+    scripts_dir = paths.repo_root / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+
+    try:
+        from benchmark_framework_scheduling import compute_scheduling_metrics, load_ledger
+    except ImportError:
+        return None
+
+    all_rows: list[dict[str, Any]] = []
+    for path in ledger_paths:
+        all_rows.extend(load_ledger(path))
+    if not all_rows:
+        return None
+
+    metrics = compute_scheduling_metrics(all_rows)
+    diversity = metrics.get("direction_diversity", {})
+    breakthroughs = metrics.get("breakthrough_efficiency", {})
+    stagnation = metrics.get("stagnation", {})
+
+    timestamps = [_parse_timestamp(row.get("recorded_at")) for row in all_rows]
+    parsed_timestamps = sorted(ts for ts in timestamps if ts is not None)
+    autonomous_minutes = 0.0
+    if len(parsed_timestamps) >= 2:
+        session_start = parsed_timestamps[0]
+        previous = parsed_timestamps[0]
+        longest_session = timedelta(0)
+        for current in parsed_timestamps[1:]:
+            if current - previous > timedelta(hours=2):
+                longest_session = max(longest_session, previous - session_start)
+                session_start = current
+            previous = current
+        longest_session = max(longest_session, previous - session_start)
+        autonomous_minutes = longest_session.total_seconds() / 60.0
+
+    direction_switches = 0
+    previous_family: str | None = None
+    for row in sorted(all_rows, key=lambda item: _as_text(item.get("recorded_at"))):
+        track_id = _as_text(row.get("track_id")).lower()
+        family = None
+        for token in ("cnn_lstm", "state_space", "conformer", "tcn", "gru", "lstm", "ridge", "xgboost"):
+            if token in track_id:
+                family = token
+                break
+        if family and previous_family and family != previous_family:
+            direction_switches += 1
+        if family:
+            previous_family = family
+
+    result = {
+        "total_iterations": metrics.get("total_iterations", 0),
+        "time_span_hours": metrics.get("time_span_hours", 0),
+        "diversity_index": diversity.get("diversity_index", 0),
+        "unique_families": diversity.get("unique_families", 0),
+        "breakthrough_rate": breakthroughs.get("breakthrough_rate", 0),
+        "breakthrough_count": breakthroughs.get("breakthrough_count", 0),
+        "cost_per_breakthrough": breakthroughs.get("cost_per_breakthrough"),
+        "max_dry_streak": stagnation.get("max_dry_streak", 0),
+        "max_stagnation_hours": stagnation.get("max_stagnation_hours", 0),
+        "direction_switches": direction_switches,
+        "autonomous_duration_minutes": autonomous_minutes,
+        "iterations_per_hour": metrics.get("iterations_per_hour", 0),
+    }
+    _framework_benchmark_cache = result
+    _framework_benchmark_mtime = current_mtime
+    return result
+
+
 def _is_cross_session_mainline_row(row: dict[str, Any]) -> bool:
     experiment_track = _as_text(row.get("experiment_track") or row.get("evaluation_mode")).lower()
     if experiment_track in {"cross_session_mainline", "canonical_mainline"}:
@@ -503,6 +619,9 @@ def build_status_snapshot(paths: AutoBciControlPlanePaths | None = None) -> dict
     latest_retrieval_packet = read_latest_packet(resolved.retrieval_packets_dir)
     latest_decision_packet = read_latest_packet(resolved.decision_packets_dir)
     latest_judgment_updates = list(reversed(read_jsonl(resolved.judgment_updates)[-5:]))
+    recent_control_events = list(reversed(read_jsonl(resolved.control_events)[-8:]))
+    program_state = _latest_program_state(resolved)
+    recent_messages = read_recent_messages(resolved.messages_ledger, limit=8)
     current_direction_tags = runtime.get("current_direction_tags") or []
     if not current_direction_tags:
         active_track_id = _as_text(status.get("active_track_id"))
@@ -588,9 +707,13 @@ def build_status_snapshot(paths: AutoBciControlPlanePaths | None = None) -> dict
         "latest_retrieval_packet": latest_retrieval_packet,
         "latest_decision_packet": latest_decision_packet,
         "latest_judgment_updates": latest_judgment_updates,
+        "recent_control_events": recent_control_events,
+        "program_state": program_state,
+        "recent_messages": recent_messages,
         "topic_handoff_summaries": topic_handoff_summaries,
         "thinking_overview": thinking_overview,
         "automation_state": automation_state,
+        "framework_benchmark": _build_framework_benchmark(resolved),
         "recommended_incubation": recommended_incubation,
         "active_incubation_campaigns": active_incubation_campaigns,
         "runtime_state": runtime,

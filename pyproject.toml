@@ -7,8 +7,10 @@ name = "bci-codex-starter"
 version = "0.1.0"
 description = "Local strict-causal BCI starter for Intan RHD + Vicon CSV"
 requires-python = ">=3.10"
+dependencies = ["rich>=13.7", "prompt_toolkit>=3.0"]
 
 [project.scripts]
+autobci = "bci_autoresearch.product_shell.cli:main"
 autobci-agent = "bci_autoresearch.control_plane.cli:main"
 
 [tool.setuptools]

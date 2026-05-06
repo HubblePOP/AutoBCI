@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { Codex } from "@openai/codex-sdk";
 
 type Primitive = string | number | boolean | null;
 type JsonValue = Primitive | JsonValue[] | { [key: string]: JsonValue };
@@ -42,9 +41,8 @@ const OUTPUT_PATH = path.join(TOOLS_ROOT, "experiment_ledger.jsonl");
 
 const DEFAULT_DATASET_NAME = "walk_matched_v1_64clean";
 const DEFAULT_SPLIT_SESSIONS = { train: 18, val: 2, test: 2 };
-const DEFAULT_AGENT_NAME = "restricted-autoresearch-codex-sdk";
+const DEFAULT_AGENT_NAME = "restricted-autoresearch-native-runtime";
 const DEFAULT_TARGET_MODE = "restricted-autoresearch";
-const AUTORESEARCH_PLANNER_REASONING_EFFORT = "medium";
 
 const ALLOWLIST = [
   /^scripts\/train_[^/]+\.py$/,
@@ -112,7 +110,7 @@ async function main() {
       "把 AutoResearch 的活动范围收紧到允许的训练脚本、模型和特征代码，再把迭代记录固定成 JSONL，避免碰 split、对齐、primary metric、数据读取和原始路径。",
     changes_summary:
       String(args["changes-summary"] ?? args["changes_summary"] ?? "").trim() ||
-      "新增受限 AutoResearch 脚手架，含 Codex SDK TypeScript 入口、目录约束、ledger 读取和迭代记录输出。",
+      "新增受限 AutoResearch 脚手架，含 native agent runtime 入口、目录约束、ledger 读取和迭代记录输出。",
     files_touched: filesTouched,
     commands,
     dataset_name: String(args["dataset-name"] ?? args["dataset_name"] ?? DEFAULT_DATASET_NAME),
@@ -125,7 +123,7 @@ async function main() {
     artifacts: parseStringList(args["artifacts"], []),
   };
 
-  const agentSummary = await maybeRunCodexPlanner(record, statusText);
+  const agentSummary = await maybeRunNativePlanner(record, statusText);
   if (agentSummary) {
     record.changes_summary = `${record.changes_summary} | planner: ${agentSummary}`;
   }
@@ -262,18 +260,10 @@ function buildDefaultText(kind: "hypothesis", statusText: string): string {
   return "";
 }
 
-async function maybeRunCodexPlanner(record: IterationRecord, statusText: string): Promise<string | null> {
-  if (process.env.AUTORESEARCH_USE_CODEX !== "1") {
+async function maybeRunNativePlanner(record: IterationRecord, statusText: string): Promise<string | null> {
+  if (process.env.AUTORESEARCH_USE_CODEX !== "1" && process.env.AUTORESEARCH_USE_AGENT_RUNTIME !== "1") {
     return null;
   }
-
-  const codex = new Codex({
-    config: {
-      model_reasoning_effort: AUTORESEARCH_PLANNER_REASONING_EFFORT,
-    },
-  });
-  const priorThreadId = process.env.AUTORESEARCH_THREAD_ID?.trim();
-  const thread = priorThreadId ? codex.resumeThread(priorThreadId) : codex.startThread();
   const prompt = [
     "你是受限 AutoResearch 规划器。",
     "只能提出训练脚本、模型脚本、特征脚本相关的下一步建议。",
@@ -286,18 +276,112 @@ async function maybeRunCodexPlanner(record: IterationRecord, statusText: string)
     "当前迭代记录草稿：",
     JSON.stringify(record, null, 2),
   ].join("\n");
-  const result = await thread.run(prompt);
-  const text = summarizeCodexResult(result);
+  const output = await runNativeJsonTask({
+    provider: process.env.AUTOBCI_AGENT_PROVIDER?.trim() || "fake",
+    model: process.env.AUTOBCI_AGENT_MODEL?.trim() || null,
+    prompt,
+  });
+  const text = summarizeNativePlannerResult(output);
   return text ? text.trim() : null;
 }
 
-function summarizeCodexResult(result: unknown): string {
+async function runNativeJsonTask({
+  provider,
+  model,
+  prompt,
+}: {
+  provider: string;
+  model: string | null;
+  prompt: string;
+}): Promise<unknown> {
+  const turnDir = path.join(REPO_ROOT, "artifacts", "monitor", "agent_runtime_turns");
+  await mkdir(turnDir, { recursive: true });
+  const turnId = `run-iteration-${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const inputPath = path.join(turnDir, `${turnId}.input.json`);
+  const outputPath = path.join(turnDir, `${turnId}.output.json`);
+  await writeFile(
+    inputPath,
+    `${JSON.stringify(
+      {
+        provider,
+        model,
+        prompt,
+        task_name: "autoresearch_iteration_planner",
+        repo_root: REPO_ROOT,
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  const pythonCommand = process.env.AUTOBCI_AGENT_RUNTIME_PYTHON?.trim() || process.env.PYTHON?.trim() || "python";
+  await runNativeRuntimeCommand(pythonCommand, inputPath, outputPath);
+  const text = await readFile(outputPath, "utf8");
+  return JSON.parse(text);
+}
+
+async function runNativeRuntimeCommand(pythonCommand: string, inputPath: string, outputPath: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(
+      pythonCommand,
+      [
+        "-m",
+        "bci_autoresearch.agent_runtime",
+        "json-task",
+        "--input",
+        inputPath,
+        "--output",
+        outputPath,
+      ],
+      {
+        cwd: REPO_ROOT,
+        env: { ...process.env, PYTHONPATH: path.join(REPO_ROOT, "src") },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", reject);
+    child.on("close", (exitCode) => {
+      if (exitCode === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(stderr.trim() || stdout.trim() || `native runtime exited ${exitCode ?? -1}`));
+    });
+  });
+}
+
+function summarizeNativePlannerResult(result: unknown): string {
   if (typeof result === "string") {
     return result;
   }
   if (result && typeof result === "object") {
     const asRecord = result as Record<string, unknown>;
-    for (const key of ["outputText", "text", "finalOutput"]) {
+    const jsonPayload = asRecord.json;
+    if (jsonPayload && typeof jsonPayload === "object") {
+      const nested = jsonPayload as Record<string, unknown>;
+      const proposal = nested.proposal;
+      if (proposal && typeof proposal === "object") {
+        const nextStep = (proposal as Record<string, unknown>).next_step;
+        if (typeof nextStep === "string" && nextStep.trim()) {
+          return nextStep;
+        }
+      }
+      for (const key of ["message", "next_step", "echo"]) {
+        const value = nested[key];
+        if (typeof value === "string" && value.trim()) {
+          return value;
+        }
+      }
+    }
+    for (const key of ["outputText", "text", "finalOutput", "message", "next_step"]) {
       const value = asRecord[key];
       if (typeof value === "string" && value.trim()) {
         return value;

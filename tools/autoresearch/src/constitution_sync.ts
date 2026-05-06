@@ -1,6 +1,6 @@
 import path from "node:path";
 
-const CONSTITUTION_PATH = "docs/CONSTITUTION.md";
+const CONSTITUTION_PATH = "memory/docs/CONSTITUTION.md";
 const WATCHED_FILES = new Set([
   "tools/autoresearch/program.md",
   "tools/autoresearch/program.current.md",

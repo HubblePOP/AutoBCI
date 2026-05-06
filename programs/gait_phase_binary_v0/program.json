@@ -1,0 +1,164 @@
+{
+  "program_id": "gait_phase_binary_v0",
+  "version": "0.1",
+  "status": "frozen",
+  "created_at": "2026-04-26T02:57:14Z",
+  "created_by": "autobci-intake",
+  "source_request_summary": "我想看看步态二分类能不能做起来",
+  "research_goal": {
+    "statement": "用脑电判断步态 support / swing 二分类是否稳定可解",
+    "task_type": "binary_classification",
+    "scientific_question": "当前标签定义下，EEG 是否含有可复现的步态相位信息"
+  },
+  "data_boundary": {
+    "dataset_name": "gait_phase_clean64",
+    "raw_data_policy": "read_only",
+    "allowed_sessions": {
+      "train": [
+        "walk_20240717_01",
+        "walk_20240717_03",
+        "walk_20240717_04",
+        "walk_20240717_05",
+        "walk_20240717_06",
+        "walk_20240717_07",
+        "walk_20240717_08",
+        "walk_20240717_09",
+        "walk_20240717_10",
+        "walk_20240717_14",
+        "walk_20240719_01",
+        "walk_20240719_02",
+        "walk_20240719_03",
+        "walk_20240719_04",
+        "walk_20240719_05",
+        "walk_20240719_06",
+        "walk_20240719_08",
+        "walk_20240719_09"
+      ],
+      "val": [
+        "walk_20240717_12",
+        "walk_20240719_07"
+      ],
+      "test": [
+        "walk_20240717_16",
+        "walk_20240719_10"
+      ]
+    },
+    "forbidden_data_access": [
+      "modify_raw_data",
+      "tune_on_test_set"
+    ]
+  },
+  "label_definition": {
+    "source": "gait_phase_reference_provisional_v1_0717_0719",
+    "known_risks": [
+      "short_intervals",
+      "pending_manual_review",
+      "historical_safe_band_filtering_dependency"
+    ],
+    "acceptance_note": "本任务先验证当前 operational label，不声明真实生理标签已可靠。"
+  },
+  "split_policy": {
+    "unit": "session",
+    "frozen_train_sessions": [
+      "walk_20240717_01",
+      "walk_20240717_03",
+      "walk_20240717_04",
+      "walk_20240717_05",
+      "walk_20240717_06",
+      "walk_20240717_07",
+      "walk_20240717_08",
+      "walk_20240717_09",
+      "walk_20240717_10",
+      "walk_20240717_14",
+      "walk_20240719_01",
+      "walk_20240719_02",
+      "walk_20240719_03",
+      "walk_20240719_04",
+      "walk_20240719_05",
+      "walk_20240719_06",
+      "walk_20240719_08",
+      "walk_20240719_09"
+    ],
+    "frozen_val_sessions": [
+      "walk_20240717_12",
+      "walk_20240719_07"
+    ],
+    "frozen_test_sessions": [
+      "walk_20240717_16",
+      "walk_20240719_10"
+    ],
+    "amendment_required_for": [
+      "changing_split",
+      "merging_train_val_test",
+      "selecting_params_on_test"
+    ]
+  },
+  "metrics": {
+    "primary": "test_balanced_accuracy",
+    "secondary": [
+      "val_balanced_accuracy",
+      "support_recall",
+      "swing_recall",
+      "confusion_matrix"
+    ],
+    "minimum_report_fields": [
+      "per_split_counts",
+      "per_class_recall",
+      "artifact_paths"
+    ]
+  },
+  "search_space": {
+    "windows_seconds": [
+      0.5,
+      1.0,
+      2.0,
+      3.0
+    ],
+    "lags_ms": [
+      0,
+      100,
+      250,
+      500
+    ],
+    "allowed_model_families": [
+      "baseline_logistic",
+      "feature_tcn",
+      "feature_gru"
+    ],
+    "allowed_feature_families": [
+      "lmp+hg_power"
+    ]
+  },
+  "forbidden_actions": [
+    "change_task_type",
+    "change_primary_metric",
+    "change_split_without_amendment",
+    "modify_raw_data",
+    "overwrite_existing_result",
+    "read_director_scratchpad_from_judge"
+  ],
+  "artifact_contract": {
+    "required_outputs": [
+      "result_json",
+      "run_log",
+      "metrics_summary",
+      "confusion_matrix",
+      "program_snapshot",
+      "guard_decisions"
+    ]
+  },
+  "amendment_policy": {
+    "requires_human_approval": [
+      "task_type",
+      "split_policy",
+      "metrics.primary",
+      "search_space"
+    ],
+    "request_message_type": "amendment_request"
+  },
+  "uncertainties": [
+    "v1 标签包含大量极短 swing interval，需要 Judge 在复评中标注风险。",
+    "历史 0.7375 高分依赖 historical safe-band filtering，不能直接当作宽口径稳定最好结果。"
+  ],
+  "frozen_at": "2026-04-26T02:57:14Z"
+}

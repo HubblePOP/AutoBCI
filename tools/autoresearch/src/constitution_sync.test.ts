@@ -11,13 +11,13 @@ test("evaluateConstitutionSync fails when a derived contract changes without CON
 
   assert.equal(result.ok, false);
   assert.equal(result.requiresConstitutionUpdate, true);
-  assert.match(result.message, /docs\/CONSTITUTION\.md/);
+  assert.match(result.message, /memory\/docs\/CONSTITUTION\.md/);
   assert.deepEqual(result.watchedFiles, ["tools/autoresearch/program.md"]);
 });
 
 test("evaluateConstitutionSync passes when CONSTITUTION.md changes together with tracked files", () => {
   const result = evaluateConstitutionSync([
-    "docs/CONSTITUTION.md",
+    "memory/docs/CONSTITUTION.md",
     "tools/autoresearch/src/run_campaign.ts",
   ]);
 
@@ -41,7 +41,7 @@ test("evaluateConstitutionSync ignores unrelated file changes", () => {
 test("evaluateConstitutionSync normalizes absolute paths against the repo root", () => {
   const repoRoot = "/repo";
   const result = evaluateConstitutionSync([
-    "/repo/docs/CONSTITUTION.md",
+    "/repo/memory/docs/CONSTITUTION.md",
     "/repo/tools/autoresearch/src/run_campaign.ts",
   ], repoRoot);
 
@@ -51,13 +51,13 @@ test("evaluateConstitutionSync normalizes absolute paths against the repo root",
 
 test("collectChangedFilesFromInput prefers explicit CLI paths", () => {
   const files = collectChangedFilesFromInput({
-    argv: ["tools/autoresearch/program.md", "docs/CONSTITUTION.md"],
+    argv: ["tools/autoresearch/program.md", "memory/docs/CONSTITUTION.md"],
     stdinText: "tools/autoresearch/src/run_campaign.ts\n",
   });
 
   assert.deepEqual(files, [
     "tools/autoresearch/program.md",
-    "docs/CONSTITUTION.md",
+    "memory/docs/CONSTITUTION.md",
   ]);
 });
 

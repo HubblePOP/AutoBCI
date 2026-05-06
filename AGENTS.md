@@ -14,11 +14,42 @@ Build and improve a strict-causal offline decoding pipeline from Intan eCOG (`.r
 
 ## Read before editing
 1. `README.md`
-2. `docs/CONSTITUTION.md`
+2. `memory/docs/CONSTITUTION.md`
 3. `configs/session_example.yaml`
 4. `scripts/convert_session.py`
 5. `scripts/train_lstm.py`
 6. `.agents/skills/bci-autoresearch/SKILL.md`
+
+## Productization and demo strategy source of truth
+
+如果任务涉及：
+
+- CLI
+- TUI
+- demo
+- dashboard
+- 传播
+- 商业化
+- provider
+- MCP / A2A
+
+默认先读：
+
+1. `memory/docs/dev_pack_2026_04_20/00_START_HERE/00_ONE_PAGE_BRIEF.md`
+2. `memory/docs/dev_pack_2026_04_20/00_START_HERE/01_CURRENT_DECISIONS.md`
+3. `memory/docs/dev_pack_2026_04_20/03_IMPLEMENTATION_PLAN/00_72H_SPRINT_PLAN.md`
+4. `memory/docs/dev_pack_2026_04_20/08_LOCAL_AGENT_HANDOFF/AGENT_BRIEF.md`
+
+这里的默认理解是：
+
+- `src/`, `scripts/`, `dashboard/`, `artifacts/`, `tools/` 是代码与运行真源
+- `memory/docs/dev_pack_2026_04_20` 是当前产品化与传播化方向真源
+
+如果任务和当前运行中的 AutoResearch 真状态有关，仍然优先读：
+
+1. `artifacts/monitor/autoresearch_status.json`
+2. `tools/autoresearch/program.current.md`
+3. `memory/current_strategy.md`
 
 ## Current research handoff
 
@@ -47,7 +78,7 @@ Build and improve a strict-causal offline decoding pipeline from Intan eCOG (`.r
 - 如果任务只是“了解研究现状”或“给外部代理补上下文”，优先读状态文件，不要改运行中的流程。
 
 ## Constitution and derived contracts
-- `docs/CONSTITUTION.md` is the repo-level source of truth for first-principles task definition, irreducible constraints, and agent authorization boundaries.
+- `memory/docs/CONSTITUTION.md` is the repo-level source of truth for first-principles task definition, irreducible constraints, and agent authorization boundaries.
 - `tools/autoresearch/program.md` and `tools/autoresearch/program.current.md` are derived execution contracts.
 - If a change affects canonical gate, alignment, search scope, or track semantics, update both the constitution and the derived AutoResearch docs in the same change.
 - Lightweight reminder check:
@@ -126,3 +157,4 @@ Use these Chinese phrases by default in user-facing text:
 ### Audience default
 - For non-expert readers, write so the text can be understood without algorithm background.
 - If the user explicitly asks for English names, English terms may stay, but the Chinese explanation should still appear with them.
+

@@ -4,10 +4,12 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from bci_autoresearch.platform_support import default_cache_root, default_execution_worktrees_root
+
 
 AUTOBCI_ROOT_ENV = "AUTOBCI_ROOT"
 DEFAULT_CACHE_ROOT_ENV = "AUTOBCI_CACHE_ROOT"
-DEFAULT_LOCAL_CACHE_ROOT = Path.home() / "Library" / "Application Support" / "AutoBci" / "session_cache"
+DEFAULT_LOCAL_CACHE_ROOT = default_cache_root()
 
 
 @dataclass(frozen=True)
@@ -25,15 +27,21 @@ class AutoBciControlPlanePaths:
     research_queries: Path
     research_evidence: Path
     topics_inbox: Path
+    amendments_inbox: Path
     retrieval_packets_dir: Path
     decision_packets_dir: Path
     judgment_updates: Path
+    control_events: Path
     hypothesis_log: Path
     supervisor_events: Path
     memory_events: Path
+    messages_ledger: Path
     current_strategy: Path
     research_tree: Path
     program_current: Path
+    programs_dir: Path
+    program_snapshots_dir: Path
+    judge_reports_dir: Path
     track_manifest: Path
     track_structure_manifest: Path
     direction_tags: Path
@@ -59,19 +67,25 @@ def get_control_plane_paths(repo_root: str | Path | None = None) -> AutoBciContr
         research_queries=monitor_dir / "research_queries.jsonl",
         research_evidence=monitor_dir / "research_evidence.jsonl",
         topics_inbox=monitor_dir / "topics.inbox.json",
+        amendments_inbox=monitor_dir / "amendments.inbox.json",
         retrieval_packets_dir=monitor_dir / "retrieval_packets",
         decision_packets_dir=monitor_dir / "decision_packets",
         judgment_updates=monitor_dir / "judgment_updates.jsonl",
+        control_events=monitor_dir / "control_events.jsonl",
         hypothesis_log=monitor_dir / "hypothesis_log.jsonl",
         supervisor_events=monitor_dir / "supervisor_events.jsonl",
         memory_events=monitor_dir / "memory_events.jsonl",
+        messages_ledger=monitor_dir / "messages.jsonl",
         current_strategy=root / "memory" / "current_strategy.md",
         research_tree=root / "memory" / "hermes_research_tree.md",
         program_current=root / "tools" / "autoresearch" / "program.current.md",
+        programs_dir=root / "programs",
+        program_snapshots_dir=monitor_dir / "program_snapshots",
+        judge_reports_dir=monitor_dir / "judge_reports",
         track_manifest=root / "tools" / "autoresearch" / "tracks.current.json",
         track_structure_manifest=root / "tools" / "autoresearch" / "tracks.structure.json",
         direction_tags=root / "configs" / "control_plane_direction_tags.json",
         launch_logs_dir=monitor_dir / "control_plane_launch_logs",
-        execution_worktrees_root=Path("/Users/mac/Code/.hermes-worktrees/autobci"),
+        execution_worktrees_root=default_execution_worktrees_root(root),
         dashboard_url="http://127.0.0.1:8878/",
     )

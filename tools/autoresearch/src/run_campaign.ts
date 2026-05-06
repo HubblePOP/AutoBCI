@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { Codex, type FileChangeItem, type ThreadItem } from "@openai/codex-sdk";
 import {
   buildCodexPrompt,
   buildDailyReviewPacket,
@@ -261,6 +260,20 @@ interface SnapshotEntry {
   content: string | null;
 }
 
+interface ThreadItem {
+  id?: string;
+  type: string;
+  status?: string;
+  command?: string;
+  changes?: Array<{ path: string; kind: string }>;
+  [key: string]: unknown;
+}
+
+interface FileChangeItem extends ThreadItem {
+  type: "file_change";
+  changes: Array<{ path: string; kind: string }>;
+}
+
 interface CodexEditResult {
   proposal: {
     hypothesis: string;
@@ -342,6 +355,23 @@ interface RelevanceClassification {
   offTrackFiles: string[];
 }
 
+interface NativeAgentRuntimeConfig {
+  pythonCommand: string;
+  provider: string | null;
+  model: string | null;
+  runtime: string;
+}
+
+type SpawnProcess = (
+  command: string,
+  args: string[],
+  options: {
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    stdio: ["ignore", "pipe", "pipe"];
+  },
+) => ChildProcess;
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const TOOLS_ROOT = path.resolve(__dirname, "..");
@@ -353,6 +383,7 @@ const MONITOR_LEDGER_PATH = path.join(REPO_ROOT, "artifacts", "monitor", "experi
 const RESEARCH_QUERIES_PATH = path.join(REPO_ROOT, "artifacts", "monitor", "research_queries.jsonl");
 const RESEARCH_EVIDENCE_PATH = path.join(REPO_ROOT, "artifacts", "monitor", "research_evidence.jsonl");
 const PROCESS_REGISTRY_PATH = path.join(REPO_ROOT, "artifacts", "monitor", "process_registry.json");
+const DEFAULT_NATIVE_AGENT_TURN_DIR = path.join(REPO_ROOT, "artifacts", "monitor", "agent_runtime_turns");
 const DEFAULT_TRACK_MANIFEST_PATH = path.join(TOOLS_ROOT, "tracks.current.json");
 const DEFAULT_REVIEW_PACKET_DIR = path.join(REPO_ROOT, "artifacts", "monitor", "review_packets");
 const DEFAULT_BASELINE_METRICS_PATH = path.join(REPO_ROOT, "artifacts", "walk_matched_v1_64clean_joints_baseline_000.json");
@@ -380,7 +411,7 @@ const DEFAULT_ALLOWED_DIRS = [
   path.join(REPO_ROOT, "src", "bci_autoresearch", "features"),
 ];
 
-const DEFAULT_AGENT_NAME = "autoresearch-campaign-codex-sdk";
+const DEFAULT_AGENT_NAME = "autoresearch-campaign-native-python";
 const DEFAULT_PRIMARY_METRIC_NAME = "val_metrics.mean_pearson_r_zero_lag_macro";
 const DEFAULT_CANONICAL_DATASET_NAME = "walk_matched_v1_64clean_joints";
 const MIN_IMPROVEMENT_EPSILON = 1e-9;
@@ -463,14 +494,6 @@ function buildValidatedTrackRelevance(): RelevanceClassification {
     supportingFiles: [],
     offTrackFiles: [],
   };
-}
-
-function buildCampaignCodex(mode: CampaignMode): Codex {
-  return new Codex({
-    config: {
-      model_reasoning_effort: campaignReasoningEffortForMode(mode),
-    },
-  });
 }
 
 function inferTrackSeriesClass(trackId: string): string {
@@ -858,6 +881,7 @@ export async function main() {
   const formalOutputDir = resolveRepoPath(String(args["formal-output-dir"] ?? args["formal_output_dir"] ?? DEFAULT_SMOKE_OUTPUT_DIR));
   const reviewPacketDir = resolveRepoPath(String(args["review-packet-dir"] ?? args["review_packet_dir"] ?? DEFAULT_REVIEW_PACKET_DIR));
   const dryRun = parseBoolean(args["dry-run"] ?? args["dry_run"]);
+  const nativeAgentRuntime = resolveNativeAgentRuntimeConfig(args);
 
   await mkdir(path.dirname(STATUS_PATH), { recursive: true });
   await mkdir(TOOLS_ROOT, { recursive: true });
@@ -951,7 +975,6 @@ export async function main() {
     if (status.budget_state === "capped") {
       break;
     }
-    const codex = buildCampaignCodex(status.campaign_mode);
     let ranTrack = false;
 
     for (const track of effectiveTrackManifest.tracks) {
@@ -968,27 +991,6 @@ export async function main() {
       ranTrack = true;
       const trackAllowedDirs = resolveTrackAllowedDirs(track);
       const skipCodexEdit = shouldTrackSkipCodexEdit(track);
-      const runtimeTrack = track as RuntimeCampaignTrack;
-      const forceFreshThread = shouldForceFreshThread(runtimeTrack);
-      const thread = skipCodexEdit
-        ? null
-        : forceFreshThread || !trackState.codex_thread_id
-          ? codex.startThread({
-              workingDirectory: REPO_ROOT,
-              skipGitRepoCheck: true,
-              sandboxMode: "workspace-write",
-              approvalPolicy: "never",
-              networkAccessEnabled: Boolean(track.internetResearchEnabled),
-              additionalDirectories: trackAllowedDirs,
-            })
-          : codex.resumeThread(trackState.codex_thread_id, {
-              workingDirectory: REPO_ROOT,
-              skipGitRepoCheck: true,
-              sandboxMode: "workspace-write",
-              approvalPolicy: "never",
-              networkAccessEnabled: Boolean(track.internetResearchEnabled),
-              additionalDirectories: trackAllowedDirs,
-            });
 
       const parentRunId = trackState.local_best.run_id || status.accepted_stable_best.run_id || null;
       const iteration = trackState.current_iteration + 1;
@@ -1014,7 +1016,7 @@ export async function main() {
       const snapshot = await snapshotPaths(trackAllowedDirs);
       status.active_track_id = track.trackId;
       status.stage = skipCodexEdit ? "smoke" : "editing";
-      status.current_command = skipCodexEdit ? "validated:skip_codex_edit" : "codex:edit";
+      status.current_command = skipCodexEdit ? "validated:skip_codex_edit" : "native_agent:edit-turn";
       status.last_error = null;
       status.candidate = {
         ...buildEmptyCandidate(runId),
@@ -1038,13 +1040,13 @@ export async function main() {
       } else {
         try {
           codexResult = await runCodexEditTurn({
-            thread: thread!,
             campaignId,
             iteration,
             status,
             track,
             allowedDirs: trackAllowedDirs,
             programDocuments,
+            runtimeConfig: nativeAgentRuntime,
           });
           trackState.codex_thread_id = codexResult.threadId;
         } catch (error) {
@@ -2316,22 +2318,28 @@ function buildAcceptedBest({
   };
 }
 
-async function runCodexEditTurn({
-  thread,
+export async function runNativeAgentEditTurn({
   campaignId,
   iteration,
   status,
   track,
   allowedDirs,
   programDocuments,
+  repoRoot = REPO_ROOT,
+  runtimeConfig = resolveNativeAgentRuntimeConfig({}),
+  turnDir = DEFAULT_NATIVE_AGENT_TURN_DIR,
+  spawnProcess = spawn,
 }: {
-  thread: ReturnType<Codex["startThread"]> | ReturnType<Codex["resumeThread"]>;
   campaignId: string;
   iteration: number;
   status: CampaignStatus;
   track: CampaignTrack;
   allowedDirs: string[];
   programDocuments: Awaited<ReturnType<typeof loadProgramDocuments>>;
+  repoRoot?: string;
+  runtimeConfig?: NativeAgentRuntimeConfig;
+  turnDir?: string;
+  spawnProcess?: SpawnProcess;
 }): Promise<CodexEditResult> {
   const schema = {
     type: "object",
@@ -2406,13 +2414,137 @@ async function runCodexEditTurn({
     summarizeStatusForPrompt(status, track.trackId),
   ].join("\n");
 
-  const turn = await thread.run(prompt, { outputSchema: schema });
-  const proposal = parseProposal(turn.finalResponse);
+  await mkdir(turnDir, { recursive: true });
+  const turnId = `${sanitizeFileSlug(campaignId)}-${sanitizeFileSlug(track.trackId)}-iter-${String(iteration).padStart(3, "0")}-${randomUUID().slice(0, 8)}`;
+  const inputPath = path.join(turnDir, `${turnId}.input.json`);
+  const outputPath = path.join(turnDir, `${turnId}.output.json`);
+  const input = {
+    campaignId,
+    iteration,
+    track,
+    allowedDirs,
+    programDocuments,
+    statusSnapshot: status,
+    prompt,
+    repoRoot,
+    provider: runtimeConfig.provider,
+    model: runtimeConfig.model,
+    runtime: runtimeConfig,
+    outputSchema: schema,
+  };
+
+  await writeFile(inputPath, `${JSON.stringify(input, null, 2)}\n`, "utf8");
+  await runNativeAgentCommand({
+    pythonCommand: runtimeConfig.pythonCommand,
+    inputPath,
+    outputPath,
+    cwd: repoRoot,
+    runtimeConfig,
+    spawnProcess,
+  });
+
+  const output = await readRequiredJson<Record<string, unknown>>(outputPath);
+  const proposalPayload = output.proposal && typeof output.proposal === "object"
+    ? JSON.stringify(output.proposal)
+    : typeof output.final_response === "string"
+      ? output.final_response
+      : JSON.stringify(output);
+  const proposal = parseProposal(proposalPayload);
   return {
     proposal,
-    items: turn.items,
-    threadId: thread.id ?? null,
+    items: parseThreadItems(output.items),
+    threadId: parseNativeAgentSessionId(output),
   };
+}
+
+async function runCodexEditTurn(args: Parameters<typeof runNativeAgentEditTurn>[0]): Promise<CodexEditResult> {
+  return runNativeAgentEditTurn(args);
+}
+
+async function runNativeAgentCommand({
+  pythonCommand,
+  inputPath,
+  outputPath,
+  cwd,
+  runtimeConfig,
+  spawnProcess,
+}: {
+  pythonCommand: string;
+  inputPath: string;
+  outputPath: string;
+  cwd: string;
+  runtimeConfig: NativeAgentRuntimeConfig;
+  spawnProcess: SpawnProcess;
+}): Promise<void> {
+  const args = [
+    "-m",
+    "bci_autoresearch.agent_runtime",
+    "edit-turn",
+    "--input",
+    inputPath,
+    "--output",
+    outputPath,
+  ];
+  const env = sanitizeLaunchEnvironment(process.env);
+  if (runtimeConfig.provider) {
+    env.AUTOBCI_AGENT_PROVIDER = runtimeConfig.provider;
+  }
+  if (runtimeConfig.model) {
+    env.AUTOBCI_AGENT_MODEL = runtimeConfig.model;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawnProcess(pythonCommand, args, {
+      cwd,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", (error) => {
+      reject(error);
+    });
+    child.on("close", (exitCode) => {
+      if (exitCode === 0) {
+        resolve();
+        return;
+      }
+      const detail = stderr.trim() || stdout.trim() || `exit ${exitCode ?? -1}`;
+      reject(new Error(`native agent edit-turn failed (exit ${exitCode ?? -1}): ${detail}`));
+    });
+  });
+}
+
+async function readRequiredJson<T>(filePath: string): Promise<T> {
+  try {
+    const text = await readFile(filePath, "utf8");
+    return JSON.parse(text) as T;
+  } catch (error) {
+    throw new Error(`native agent output missing or invalid: ${filePath}: ${stringifyError(error)}`);
+  }
+}
+
+function parseThreadItems(value: unknown): ThreadItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is ThreadItem => Boolean(item) && typeof item === "object" && typeof (item as ThreadItem).type === "string");
+}
+
+function parseNativeAgentSessionId(output: Record<string, unknown>): string | null {
+  const value = output.agent_session_id ?? output.threadId ?? output.thread_id ?? output.sessionId ?? output.session_id;
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+function sanitizeFileSlug(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 96) || "turn";
 }
 
 function summarizeStatusForPrompt(status: CampaignStatus, activeTrackId: string): string {
@@ -2518,7 +2650,7 @@ function auditFileChanges(items: ThreadItem[], allowedDirs: string[]): {
   fileChanges: Array<{ path: string; kind: string }>;
   violations: string[];
 } {
-  const fileChanges = items.filter((item): item is FileChangeItem => item.type === "file_change");
+  const fileChanges = items.filter((item): item is FileChangeItem => item.type === "file_change" && Array.isArray(item.changes));
   const seen = new Set<string>();
   const touched: string[] = [];
   const violations: string[] = [];
@@ -2646,7 +2778,7 @@ function deriveRelevantPatterns(smokeCommand: string, formalCommand: string): st
 function collectCommandStrings(items: ThreadItem[]): string[] {
   const commands: string[] = [];
   for (const item of items) {
-    if (item.type === "command_execution") {
+    if (item.type === "command_execution" && typeof item.command === "string") {
       commands.push(item.command);
     }
   }
@@ -3160,6 +3292,20 @@ function optionalString(value: unknown): string | null {
 
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
+}
+
+function resolveNativeAgentRuntimeConfig(args: ParsedArgs): NativeAgentRuntimeConfig {
+  return {
+    pythonCommand: optionalString(process.env.AUTOBCI_AGENT_RUNTIME_PYTHON)
+      ?? optionalString(process.env.PYTHON)
+      ?? "python",
+    provider: optionalString(process.env.AUTOBCI_AGENT_PROVIDER)
+      ?? optionalString(args["agent-provider"] ?? args["agent_provider"]),
+    model: optionalString(process.env.AUTOBCI_AGENT_MODEL)
+      ?? optionalString(args["agent-model"] ?? args["agent_model"]),
+    runtime: optionalString(args["agent-runtime"] ?? args["agent_runtime"])
+      ?? "native-python-cli",
+  };
 }
 
 function parseArgs(argv: string[]): ParsedArgs {

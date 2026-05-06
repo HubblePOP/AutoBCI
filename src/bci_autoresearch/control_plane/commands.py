@@ -10,8 +10,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from bci_autoresearch.platform_support import default_cache_root, detached_process_kwargs, is_windows, venv_python_path
+
 from .client_api import build_status_snapshot, compute_mainline_stagnation
-from .paths import AUTOBCI_ROOT_ENV, DEFAULT_CACHE_ROOT_ENV, DEFAULT_LOCAL_CACHE_ROOT, AutoBciControlPlanePaths, get_control_plane_paths
+from .paths import AUTOBCI_ROOT_ENV, DEFAULT_CACHE_ROOT_ENV, AutoBciControlPlanePaths, get_control_plane_paths
 from .runtime_store import (
     append_hypothesis_log,
     append_jsonl,
@@ -972,7 +974,7 @@ def launch_campaign(
     if bank_qc_command:
         command.extend(["--bank-qc-command", str(bank_qc_command)])
     env = os.environ.copy()
-    env.setdefault(DEFAULT_CACHE_ROOT_ENV, str(DEFAULT_LOCAL_CACHE_ROOT))
+    env.setdefault(DEFAULT_CACHE_ROOT_ENV, str(default_cache_root()))
     env[AUTOBCI_ROOT_ENV] = str(resolved.repo_root)
     with log_path.open("a", encoding="utf-8") as handle:
         process = subprocess.Popen(
@@ -980,8 +982,8 @@ def launch_campaign(
             cwd=resolved.repo_root,
             stdout=handle,
             stderr=subprocess.STDOUT,
-            start_new_session=True,
             env=env,
+            **detached_process_kwargs(),
         )
     runtime.update(
         {
@@ -1008,23 +1010,39 @@ def launch_campaign(
     }
 
 
-def _signal_runtime(paths: AutoBciControlPlanePaths, sig: signal.Signals, next_state: str, verb: str) -> str:
+def _request_runtime_state(paths: AutoBciControlPlanePaths, *, desired_state: str, request_key: str) -> dict[str, Any]:
     runtime = _runtime_state(paths)
-    pid = int(runtime.get("pid") or 0)
-    if not _pid_is_alive(pid):
-        raise ControlPlaneError("当前没有可控制的 AutoResearch 进程。")
-    _signal_pid(pid, sig)
-    runtime["runtime_status"] = next_state
+    runtime["desired_state"] = desired_state
+    runtime[request_key] = True
+    runtime[f"{request_key}_at"] = _utcnow()
     _write_runtime_state(paths, runtime)
-    return f"{verb} {runtime.get('campaign_id') or pid}"
+    return runtime
+
+
+def _signal_runtime(paths: AutoBciControlPlanePaths, sig: signal.Signals, next_state: str, verb: str, request_key: str) -> str:
+    runtime = _request_runtime_state(paths, desired_state=next_state, request_key=request_key)
+    pid = int(runtime.get("pid") or 0)
+    campaign = runtime.get("campaign_id") or pid or "-"
+    if not _pid_is_alive(pid):
+        runtime["runtime_status"] = f"{next_state}_requested"
+        _write_runtime_state(paths, runtime)
+        return f"已记录 {verb} 请求：当前没有可 signal 的 AutoResearch 进程（{campaign}）。"
+    if is_windows():
+        runtime["runtime_status"] = f"{next_state}_requested"
+        _write_runtime_state(paths, runtime)
+        return f"Windows 已记录 {verb} 请求：不会发送 SIGSTOP/SIGCONT，请运行时按 desired_state={next_state} 协作处理（{campaign}）。"
+    signaled = _signal_pid(pid, sig)
+    runtime["runtime_status"] = next_state if signaled else f"{next_state}_requested"
+    _write_runtime_state(paths, runtime)
+    return f"{verb} {campaign}" if signaled else f"已记录 {verb} 请求：signal 发送失败（{campaign}）。"
 
 
 def pause_runtime(paths: AutoBciControlPlanePaths | None = None) -> str:
-    return _signal_runtime(paths or get_control_plane_paths(), signal.SIGSTOP, "paused", "paused")
+    return _signal_runtime(paths or get_control_plane_paths(), signal.SIGSTOP, "paused", "paused", "pause_requested")
 
 
 def resume_runtime(paths: AutoBciControlPlanePaths | None = None) -> str:
-    return _signal_runtime(paths or get_control_plane_paths(), signal.SIGCONT, "running", "resumed")
+    return _signal_runtime(paths or get_control_plane_paths(), signal.SIGCONT, "running", "resumed", "resume_requested")
 
 
 def end_runtime(paths: AutoBciControlPlanePaths | None = None) -> str:
@@ -1090,9 +1108,10 @@ def _ensure_execution_worktree(paths: AutoBciControlPlanePaths, *, task_slug: st
 
 def _bootstrap_execution_venv(worktree_root: Path, *, source_repo_root: Path) -> tuple[Path, str]:
     venv_dir = worktree_root / ".venv"
-    python_bin = venv_dir / "bin" / "python"
+    python_bin = venv_python_path(venv_dir)
     if not python_bin.exists():
         subprocess.run([sys.executable, "-m", "venv", "--system-site-packages", str(venv_dir)], check=True)
+        python_bin = venv_python_path(venv_dir)
     verify_env = source_repo_root / "scripts" / "verify_env.py"
     env = os.environ.copy()
     env["PYTHONPATH"] = str(source_repo_root / "src")
@@ -1333,8 +1352,8 @@ def start_supervision_background(
             cwd=resolved.repo_root,
             stdout=handle,
             stderr=subprocess.STDOUT,
-            start_new_session=True,
             env=env,
+            **detached_process_kwargs(),
         )
     runtime["supervisor_pid"] = process.pid
     runtime["supervisor_status"] = "running"

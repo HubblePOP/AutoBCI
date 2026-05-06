@@ -51,11 +51,11 @@ function baseManifest() {
 }
 
 async function writeBaseRepo(tempRoot: string): Promise<void> {
-  await mkdir(path.join(tempRoot, "docs"), { recursive: true });
+  await mkdir(path.join(tempRoot, "memory", "docs"), { recursive: true });
   await mkdir(path.join(tempRoot, "memory"), { recursive: true });
   await mkdir(path.join(tempRoot, "tools", "autoresearch"), { recursive: true });
 
-  await writeFile(path.join(tempRoot, "docs", "CONSTITUTION.md"), "# constitution\n", "utf8");
+  await writeFile(path.join(tempRoot, "memory", "docs", "CONSTITUTION.md"), "# constitution\n", "utf8");
   await writeFile(
     path.join(tempRoot, "memory", "current_strategy.md"),
     [

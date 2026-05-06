@@ -8,6 +8,8 @@ export interface ProgramDocuments {
   derivedProgramText: string;
   currentProgramPath: string;
   currentProgramText: string;
+  programContractPath?: string;
+  programContractText?: string;
 }
 
 export interface CampaignTrack {
@@ -94,14 +96,16 @@ export interface TrackOutcomeDecision {
 
 export async function loadProgramDocuments(toolsRoot: string): Promise<ProgramDocuments> {
   const repoRoot = path.resolve(toolsRoot, "..", "..");
-  const constitutionPath = path.join(repoRoot, "docs", "CONSTITUTION.md");
+  const constitutionPath = path.join(repoRoot, "memory", "docs", "CONSTITUTION.md");
   const derivedProgramPath = path.join(toolsRoot, "program.md");
   const currentProgramPath = path.join(toolsRoot, "program.current.md");
+  const programContractPath = path.join(repoRoot, "programs", "gait_phase_binary_v0", "program.json");
 
-  const [constitutionText, derivedProgramText, currentProgramText] = await Promise.all([
-    readRequiredText(constitutionPath, "docs/CONSTITUTION.md"),
+  const [constitutionText, derivedProgramText, currentProgramText, programContractText] = await Promise.all([
+    readRequiredText(constitutionPath, "memory/docs/CONSTITUTION.md"),
     readRequiredText(derivedProgramPath, "program.md"),
     readRequiredText(currentProgramPath, "program.current.md"),
+    readOptionalText(programContractPath),
   ]);
 
   return {
@@ -111,6 +115,12 @@ export async function loadProgramDocuments(toolsRoot: string): Promise<ProgramDo
     derivedProgramText,
     currentProgramPath,
     currentProgramText,
+    ...(programContractText
+      ? {
+        programContractPath,
+        programContractText,
+      }
+      : {}),
   };
 }
 
@@ -218,6 +228,15 @@ export function buildCodexPrompt({
     `program.current.md: ${programDocuments.currentProgramPath}`,
     summarizePromptDocument(programDocuments.currentProgramText),
     "",
+    ...(
+      programDocuments.programContractPath && programDocuments.programContractText
+        ? [
+          `ProgramMD JSON: ${programDocuments.programContractPath}`,
+          summarizePromptDocument(programDocuments.programContractText, { maxLines: 32, maxChars: 2400 }),
+          "",
+        ]
+        : []
+    ),
     "当前 track：",
     `- track_id: ${track.trackId}`,
     ...(track.topicId ? [`- topic_id: ${track.topicId}`] : []),
@@ -420,6 +439,14 @@ async function readRequiredText(filePath: string, label: string): Promise<string
     throw new Error(`Missing required AutoResearch file: ${label} (${filePath})`, {
       cause: error,
     });
+  }
+}
+
+async function readOptionalText(filePath: string): Promise<string> {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch {
+    return "";
   }
 }
 

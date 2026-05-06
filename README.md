@@ -2,8 +2,8 @@
 
 这个仓库现在用于承接当前这套 BCI 实验项目代码。
 
-- 仓库总纲：[`docs/CONSTITUTION.md`](docs/CONSTITUTION.md)
-- AutoResearch 去敏框架说明：[`docs/autoresearch_deidentified_framework.md`](docs/autoresearch_deidentified_framework.md)
+- 仓库总纲：[`memory/docs/CONSTITUTION.md`](memory/docs/CONSTITUTION.md)
+- AutoResearch 去敏框架说明：[`memory/docs/autoresearch_deidentified_framework.md`](memory/docs/autoresearch_deidentified_framework.md)
 - AutoResearch 操作台入口：[`scripts/open_autoresearch_console.sh`](scripts/open_autoresearch_console.sh)
 - 项目来源：`/Volumes/Elements/bci/bci_codex_starter`
 - 当前实验状态入口：[`reports/2026-04-07/experiment_status.md`](reports/2026-04-07/experiment_status.md)
@@ -47,6 +47,28 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
+```
+
+### Windows 11 PowerShell 快速安装
+
+Windows 版正式入口是 Python 包安装出来的 `autobci`，不是 `scripts/open_autoresearch_console.sh`。
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\install_windows.ps1
+```
+
+安装脚本会创建 `.venv`、安装 Python 依赖和 `tools/autoresearch` 的 Node 依赖，并跑：
+
+```powershell
+.\.venv\Scripts\python.exe -m bci_autoresearch.product_shell.cli doctor --json
+.\.venv\Scripts\python.exe -m bci_autoresearch.product_shell.cli provider test fake
+```
+
+安装完成后启动：
+
+```powershell
+.\.venv\Scripts\autobci.exe
 ```
 
 ## 2. 验证 MPS
@@ -245,7 +267,7 @@ python scripts/train_lstm.py \
 
 AutoResearch 现在有一层更上位的仓库总纲：
 
-- 仓库级唯一上位真源：[`docs/CONSTITUTION.md`](docs/CONSTITUTION.md)
+- 仓库级唯一上位真源：[`memory/docs/CONSTITUTION.md`](memory/docs/CONSTITUTION.md)
 - 长期执行派生契约：[`tools/autoresearch/program.md`](tools/autoresearch/program.md)
 - 当前 campaign 附录：[`tools/autoresearch/program.current.md`](tools/autoresearch/program.current.md)
 
