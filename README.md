@@ -1,20 +1,75 @@
-# AutoBci
+# AutoBCI
 
-这个仓库现在用于承接当前这套 BCI 实验项目代码。
+AutoBCI 是一个本地科研闭环 harness alpha。它不是通用 Agent 平台，也不承诺自动做出最强算法；它做的是把一次本地研究尝试拆成可审计的步骤：Program、研究方向、执行沙盒、固定评估、结果复核、ledger。
 
-- 仓库总纲：[`memory/docs/CONSTITUTION.md`](memory/docs/CONSTITUTION.md)
-- AutoResearch 去敏框架说明：[`memory/docs/autoresearch_deidentified_framework.md`](memory/docs/autoresearch_deidentified_framework.md)
-- AutoResearch 操作台入口：[`scripts/open_autoresearch_console.sh`](scripts/open_autoresearch_console.sh)
-- 项目来源：`/Volumes/Elements/bci/bci_codex_starter`
-- 当前实验状态入口：[`reports/2026-04-07/experiment_status.md`](reports/2026-04-07/experiment_status.md)
-- 当前已同步内容：
-  - `src / scripts / configs / tests / dashboard / memory`
-  - `tools/autoresearch` 的源码和配置
-  - 本轮结果摘要：`reports/2026-04-06/`、`reports/2026-04-07/`
-- 当前没有同步：
-  - `data/` 缓存
-  - `artifacts/` 大体积生成物
-  - `.venv/` 和本地运行缓存
+当前 alpha 的主线 demo 是 RSVP 纯图像二分类：给一份本地图像数据目录，让受限 coding-agent 结构沙盒尝试写一个 `ship / not-ship` 算法。成功或失败都必须留下 `events.jsonl`、`ledger.jsonl`、run artifact 和 Dashboard 可复盘记录。
+
+## 当前支持
+
+- `autobci`：TUI 主入口，用来配置模型、配置数据目录、描述任务、启动最小研究闭环。
+- `autobci-agent`：自动化 / 调试入口，用来跑 `research-loop step`、状态检查和单 track 测试。
+- 模型配置：通过 `/model` 或 CLI 配置计划/对话模型；不使用 fake provider 或本地兜底冒充智能。
+- 数据配置：通过 `/data` 或 `AUTOBCI_RSVP_SHIP_IMAGE_DATASET_ROOT` 指向本地图像目录。
+- 结构沙盒：默认调用 `codex exec`，也支持 `AUTOBCI_STRUCTURE_SANDBOX_RUNNER` 自定义外部 coding-agent runner。
+- 审计记录：研究过程写入 `artifacts/research_loop/<task_id>/events.jsonl`、`ledger.jsonl` 和 `runs/<run_id>/result.json`。
+
+## 当前不支持
+
+- 仓库不附带真实数据。
+- 不保证自主研究一定提升分数。
+- Windows 不是首个开源 alpha 的硬验收目标；macOS + Linux 是当前主路径。
+- `edit_code` 依赖外部 coding agent；没有 `codex` 或自定义 runner 时会明确失败，不会假装完成。
+- `data/raw/` 始终只读，不能被沙盒或 runner 修改。
+
+## 快速开始
+
+```bash
+git clone <your-fork-or-repo-url>
+cd AutoBci
+bash scripts/install.sh
+source .venv/bin/activate
+autobci doctor --json
+autobci
+```
+
+首次打开后先完成两件事：
+
+1. 输入 `/model`，选择 provider，粘贴 API key，测试通过后保存。
+2. 输入 `/data`，选择图像数据目录。
+
+自动化路径：
+
+```bash
+autobci model test xiaomi --model mimo-v2-pro
+autobci smoke intake-llm --provider xiaomi --model mimo-v2-pro --json
+autobci-agent research-loop step \
+  --task rsvp_ship_image_only_v0 \
+  --only-track zero_from_scratch_image_algorithm \
+  --json
+```
+
+## 图像数据目录
+
+RSVP 纯图像任务默认读取二分类目录：
+
+```text
+your_dataset/
+  target/       # ship 图片
+  nontarget/    # not-ship 图片
+  allimages/    # 可选：原始混合图片
+```
+
+也可以用环境变量直接指定：
+
+```bash
+export AUTOBCI_RSVP_SHIP_IMAGE_DATASET_ROOT=/absolute/path/to/your_dataset
+```
+
+本地路径会保存到 `.autobci/data_paths.json`，不会提交到 GitHub。
+
+## 旧 BCI starter 说明
+
+下面内容是早期 eCOG / Vicon 严格因果解码管线的历史说明，仍保留作为项目背景。
 
 # BCI Codex Starter (Intan RHD + Vicon CSV + PyTorch/MPS)
 
@@ -49,6 +104,30 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+### Linux 快速安装
+
+从 GitHub clone 下来后，在仓库根目录运行：
+
+```bash
+bash scripts/install_linux.sh
+source .venv/bin/activate
+autobci
+```
+
+首次打开 `autobci` 时，如果计划/对话模型没有可用 key，TUI 会进入首次配置向导。AutoBCI 不自带模型 key，也不会用本地兜底冒充智能；你需要在 TUI 里选择 Provider，粘贴 API key，测试通过后再开始研究计划。
+
+如果要跑自己的图像识别数据，先在 TUI 里输入：
+
+```text
+/data
+```
+
+然后把本地数据目录拖进去或粘贴绝对路径。AutoBCI 会把路径保存到本仓库的 `.autobci/data_paths.json`，这个文件被 git 忽略，不会把你的数据路径提交到 GitHub。也可以直接设置：
+
+```bash
+export AUTOBCI_RSVP_SHIP_IMAGE_DATASET_ROOT=/absolute/path/to/your/dataset
+```
+
 ### Windows 11 PowerShell 快速安装
 
 Windows 版正式入口是 Python 包安装出来的 `autobci`，不是 `scripts/open_autoresearch_console.sh`。
@@ -62,7 +141,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 ```powershell
 .\.venv\Scripts\python.exe -m bci_autoresearch.product_shell.cli doctor --json
-.\.venv\Scripts\python.exe -m bci_autoresearch.product_shell.cli provider test fake
+.\.venv\Scripts\python.exe -m bci_autoresearch.product_shell.cli windows doctor
 ```
 
 安装完成后启动：

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
+from .config import resolve_provider_api_key
+from .pi_runtime import PiRuntimeAdapter
 from .presets import ProviderPreset
 
 
@@ -34,8 +35,12 @@ class ProviderClient:
     timeout_seconds: float = 30.0
 
     def generate_json(self, task: dict[str, Any]) -> dict[str, Any]:
-        if self.preset.protocol == "fake":
-            return self._fake_json(task)
+        if self.preset.protocol == "pi":
+            return PiRuntimeAdapter(
+                preset=self.preset,
+                model=self.model,
+                timeout_seconds=self.timeout_seconds,
+            ).generate_json(task)
         if self.preset.protocol == "anthropic_compatible":
             raise UnsupportedProviderProtocol(
                 "Anthropic-compatible live calls are intentionally stubbed in this first runtime slice."
@@ -44,30 +49,10 @@ class ProviderClient:
             return self._openai_compatible_json(task)
         raise UnsupportedProviderProtocol(f"Unsupported provider protocol: {self.preset.protocol}")
 
-    def _fake_json(self, task: dict[str, Any]) -> dict[str, Any]:
-        prompt = str(task.get("prompt") or task.get("message") or "").strip()
-        return {
-            "ok": True,
-            "provider": "fake",
-            "model": self.model,
-            "echo": prompt[:200],
-            "proposal": {
-                "hypothesis": "Provider runtime plumbing can be tested safely with the fake provider.",
-                "why_this_change": "The fake provider gives CI a deterministic JSON path without secrets or network.",
-                "changes_summary": "Return a typed proposal shell and keep file writes inside the runtime/provider layer.",
-                "change_bucket": "runtime_provider",
-                "track_comparison_note": "No research track comparison is claimed by this runtime-only turn.",
-                "files_touched": [],
-                "next_step": "Run the provider/runtime test file and inspect the ledgers.",
-                "search_queries": [],
-                "research_evidence": [],
-            },
-        }
-
     def _openai_compatible_json(self, task: dict[str, Any]) -> dict[str, Any]:
         if not self.preset.api_key_env:
             raise MissingProviderKey(self.preset.name, "")
-        api_key = os.environ.get(self.preset.api_key_env)
+        api_key = resolve_provider_api_key(self.preset.name, self.preset.api_key_env)
         if not api_key:
             raise MissingProviderKey(self.preset.name, self.preset.api_key_env)
         url = self.preset.base_url.rstrip("/") + "/chat/completions"

@@ -68,11 +68,11 @@ class ProgramContractTests(unittest.TestCase):
 
         self.assertEqual(frozen["status"], "frozen")
         self.assertIn(str(repo_root / "programs" / "gait_phase_binary_v0" / "program.json"), refs)
-        self.assertIn(str(repo_root / "programs" / "gait_phase_binary_v0" / "ProgramMD.md"), refs)
+        self.assertIn(str(repo_root / "programs" / "gait_phase_binary_v0" / "Program.md"), refs)
         self.assertIn(str(repo_root / "artifacts" / "monitor" / "program_snapshots" / "run-001.json"), refs)
         saved = json.loads((repo_root / "programs" / "gait_phase_binary_v0" / "program.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["status"], "frozen")
-        self.assertIn("短 interval", (repo_root / "programs" / "gait_phase_binary_v0" / "ProgramMD.md").read_text(encoding="utf-8"))
+        self.assertIn("短 interval", (repo_root / "programs" / "gait_phase_binary_v0" / "Program.md").read_text(encoding="utf-8"))
 
     def test_typed_messages_reject_judge_scratchpad_leakage(self) -> None:
         from bci_autoresearch.control_plane.messages import ControlMessageError, build_control_message
@@ -214,9 +214,31 @@ class ProgramContractTests(unittest.TestCase):
         )
 
         self.assertFalse(should_quit)
-        self.assertIn("ProgramMD 草案", draft_message)
-        self.assertIn("等待确认", draft_message)
+        self.assertIn("还没有生成 Program 草案", draft_message)
         self.assertFalse((repo_root / "programs" / "gait_phase_binary_v0" / "program.json").exists())
+
+        should_quit, draft_message = handle_command(
+            "现在生成 Program：我想看看步态二分类能不能做起来",
+            repo_root=repo_root,
+            host="127.0.0.1",
+            port=8878,
+            session_state=session_state,
+        )
+
+        self.assertFalse(should_quit)
+        self.assertIn("Program 已更新", draft_message)
+        self.assertIn("gait_phase_binary_v0", draft_message)
+
+        should_quit, accept_message = handle_command(
+            "/plan accept",
+            repo_root=repo_root,
+            host="127.0.0.1",
+            port=8878,
+            session_state=session_state,
+        )
+
+        self.assertFalse(should_quit)
+        self.assertIn("Program 已确认", accept_message)
 
         should_quit, approve_message = handle_command(
             "approve",
@@ -227,7 +249,7 @@ class ProgramContractTests(unittest.TestCase):
         )
 
         self.assertFalse(should_quit)
-        self.assertIn("已冻结 ProgramMD", approve_message)
+        self.assertIn("已冻结 Program", approve_message)
         program_path = repo_root / "programs" / "gait_phase_binary_v0" / "program.json"
         self.assertTrue(program_path.exists())
         frozen = json.loads(program_path.read_text(encoding="utf-8"))
@@ -245,7 +267,7 @@ class ProgramContractTests(unittest.TestCase):
             session_state=session_state,
         )
         self.assertFalse(should_quit)
-        self.assertIn("当前 ProgramMD", show_message)
+        self.assertIn("当前 Program", show_message)
         self.assertIn("gait_phase_binary_v0", show_message)
         self.assertIn("frozen", show_message)
 

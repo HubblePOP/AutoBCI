@@ -12,9 +12,9 @@ from .safety import check_runtime_safety
 
 
 DEFAULT_PROPOSAL: dict[str, Any] = {
-    "hypothesis": "Provider runtime plumbing can be tested with a deterministic local provider.",
-    "why_this_change": "This keeps native agent runtime integration testable without network access or secrets.",
-    "changes_summary": "Use the provider layer to produce JSON and return a TypeScript-compatible proposal envelope.",
+    "hypothesis": "No proposal was generated because the configured provider did not return a usable response.",
+    "why_this_change": "Runtime failures must be visible instead of being replaced by a local substitute.",
+    "changes_summary": "Provider call failed; inspect provider configuration, model name, API key, and runtime logs.",
     "change_bucket": "runtime_provider",
     "track_comparison_note": "No AutoResearch track comparison is claimed by this provider/runtime turn.",
     "files_touched": [],
@@ -101,20 +101,15 @@ def run_edit_turn(payload: dict[str, Any], *, repo_root: str | Path | None = Non
         "prompt": payload.get("message") or payload.get("prompt") or "Draft an AutoBci runtime edit proposal as JSON.",
     }
     result = generate_json_task(task, provider_name=provider)
-    fallback_used = False
-    if not result.get("ok") and provider != "fake":
-        fallback_used = True
-        result = generate_json_task({**task, "provider": "fake"}, provider_name="fake")
-
     response_json = result.get("response") if isinstance(result.get("response"), dict) else {}
     proposal = _proposal_from_json(response_json if isinstance(response_json, dict) else {})
+    summary = proposal["changes_summary"] if result.get("ok") else str(result.get("message") or result.get("error_code") or proposal["changes_summary"])
     item = {
         "type": "proposal",
         "provider": result.get("provider"),
         "model": result.get("model"),
-        "fallback_used": fallback_used,
         "ok": bool(result.get("ok")),
-        "summary": proposal["changes_summary"],
+        "summary": summary,
     }
     append_provider_trace(
         root,
@@ -123,7 +118,6 @@ def run_edit_turn(payload: dict[str, Any], *, repo_root: str | Path | None = Non
             "provider": result.get("provider") or provider,
             "model": result.get("model"),
             "ok": bool(result.get("ok")),
-            "fallback_used": fallback_used,
             "error_code": result.get("error_code"),
         },
     )

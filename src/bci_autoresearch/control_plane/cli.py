@@ -25,7 +25,15 @@ from .commands import (
     think,
     topic_triage,
 )
+from .director_plan import run_director_plan
 from .paths import get_control_plane_paths
+from .research_loop import (
+    explain_research_track,
+    run_research_loop,
+    status_research_loop,
+    step_research_loop,
+    stop_research_loop,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -98,6 +106,38 @@ def build_parser() -> argparse.ArgumentParser:
     supervise.add_argument("--patience", type=int, default=DEFAULT_PATIENCE)
     supervise.add_argument("--auto-incubate", action="store_true")
     supervise.add_argument("--foreground", action="store_true")
+
+    director_plan = subparsers.add_parser("director-plan")
+    director_plan.add_argument("--repo-root", default=None)
+    director_plan.add_argument("--input", dest="input_path", default=None)
+    director_plan.add_argument("--min-tracks", type=int, default=10)
+    director_plan.add_argument("--web", choices=("off", "on", "auto"), default="auto")
+    director_plan.add_argument(
+        "--web-provider",
+        choices=("disabled", "fixture", "openai_web_search", "searxng"),
+        default=None,
+    )
+    director_plan.add_argument("--json", action="store_true")
+
+    research_loop = subparsers.add_parser("research-loop")
+    research_loop_sub = research_loop.add_subparsers(dest="research_loop_action", required=True)
+    for name in ("status", "step", "stop"):
+        cmd = research_loop_sub.add_parser(name)
+        cmd.add_argument("--repo-root", default=None)
+        cmd.add_argument("--task", default="rsvp_ship_image_only_v0")
+        if name == "step":
+            cmd.add_argument("--only-track", default=None)
+        cmd.add_argument("--json", action="store_true")
+    run_loop = research_loop_sub.add_parser("run")
+    run_loop.add_argument("--repo-root", default=None)
+    run_loop.add_argument("--task", default="rsvp_ship_image_only_v0")
+    run_loop.add_argument("--max-steps", type=int, default=1)
+    run_loop.add_argument("--json", action="store_true")
+    explain_loop = research_loop_sub.add_parser("explain")
+    explain_loop.add_argument("--repo-root", default=None)
+    explain_loop.add_argument("--task", default="rsvp_ship_image_only_v0")
+    explain_loop.add_argument("--track", required=True)
+    explain_loop.add_argument("--json", action="store_true")
 
     return parser
 
@@ -244,6 +284,40 @@ def main(argv: list[str] | None = None) -> int:
                         auto_incubate=args.auto_incubate,
                     )
                 )
+            return 0
+        if action == "director-plan":
+            payload = run_director_plan(
+                paths.repo_root,
+                input_path=args.input_path,
+                min_tracks=args.min_tracks,
+                web=args.web,
+                web_provider=args.web_provider,
+            )
+            if getattr(args, "json", False):
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            else:
+                print(f"Director plan: {payload.get('plan_id')}")
+                print(f"Tracks: {len(payload.get('tracks') or [])}")
+                print(f"Web: {payload.get('web_research', {}).get('web_status')} / {payload.get('web_research', {}).get('provider')}")
+            return 0
+        if action == "research-loop":
+            loop_action = str(args.research_loop_action)
+            if loop_action == "status":
+                payload = status_research_loop(paths.repo_root, task_id=args.task)
+            elif loop_action == "step":
+                payload = step_research_loop(paths.repo_root, task_id=args.task, only_track_id=getattr(args, "only_track", None))
+            elif loop_action == "run":
+                payload = run_research_loop(paths.repo_root, task_id=args.task, max_steps=args.max_steps)
+            elif loop_action == "stop":
+                payload = stop_research_loop(paths.repo_root, task_id=args.task)
+            elif loop_action == "explain":
+                payload = explain_research_track(paths.repo_root, task_id=args.task, track_id=args.track)
+            else:  # pragma: no cover - argparse prevents this.
+                raise ValueError(f"Unknown research-loop action: {loop_action}")
+            if getattr(args, "json", False):
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            else:
+                print(f"Research loop {loop_action}: {payload.get('status') or payload.get('phase') or '-'}")
             return 0
     except Exception as exc:
         print(str(exc), file=sys.stderr)

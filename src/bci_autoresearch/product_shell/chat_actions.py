@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import subprocess
 import time
@@ -17,17 +18,20 @@ from bci_autoresearch.control_plane.messages import append_control_message, buil
 from bci_autoresearch.control_plane.runtime_store import (
     append_jsonl,
     read_json,
+    read_text,
     read_topics_inbox,
     write_json_atomic,
+    write_text_atomic,
     write_topics_inbox,
 )
-from bci_autoresearch.control_plane.programs import build_gait_phase_program_draft, freeze_program_contract
+from bci_autoresearch.control_plane.programs import build_program_draft_from_request, freeze_program_contract
 from bci_autoresearch.platform_support import default_cache_root, detached_process_kwargs
 
 
 SHELL_SESSION_PREFIX = "autobci-shell"
 PROPOSAL_SCOPE_LABEL = "chat_shell_proposal"
 AMENDMENT_KIND = "program_amendment_draft"
+AUDIT_SCHEMA_VERSION = "autobci_audit_judgment_chain_v1"
 
 STATUS_KEYWORDS = (
     "现在在跑什么",
@@ -50,6 +54,17 @@ PROGRAM_INTAKE_KEYWORDS = (
     "步态脑电二分类",
     "support swing",
     "support / swing",
+    "rsvp",
+    "RSVP",
+    "跨模态",
+    "纯图像",
+    "只用图像",
+    "不用脑电",
+    "是不是船",
+    "not-ship",
+    "图像识别出船",
+    "脑电识别出船",
+    "识别出船",
 )
 BOUNDARY_KEYWORDS = (
     "canonical",
@@ -135,13 +150,13 @@ def action_summary_label(intent_kind: str) -> str:
         "read_status": "查看当前研究态",
         "open_dashboard": "打开运行态投影",
         "report_latest": "读取最新摘要",
-        "draft_program": "生成 ProgramMD 草案",
+        "draft_program": "生成 Program 草案",
         "draft_proposal": "生成候选研究草案",
         "draft_amendment": "生成 Program Amendment 草案",
         "run_smoke": "准备受控 AutoResearch 探针",
         "plan_autoresearch": "用 AutoResearch 方法论制定计划",
         "run_bare_probe": "准备 bare run 探针",
-        "intake_chat": "继续 Intake 对话",
+        "intake_chat": "继续计划对话",
         "cancel_or_help": "查看帮助或取消当前动作",
     }
     return labels.get(intent_kind, intent_kind)
@@ -247,6 +262,7 @@ def classify_user_turn(command_text: str, snapshot: dict[str, Any]) -> dict[str,
     result_status = "awaiting_confirmation" if requires_confirmation else "ready"
     summary = action_summary_label(intent_kind)
     boundary_note = ""
+    program_draft = build_program_draft_from_request(normalized) if intent_kind == "draft_program" else None
 
     if intent_kind == "open_dashboard":
         command_preview = "autobci dashboard"
@@ -261,9 +277,10 @@ def classify_user_turn(command_text: str, snapshot: dict[str, Any]) -> dict[str,
         command_preview = f"topics.inbox.json <= {PROPOSAL_SCOPE_LABEL}"
         boundary_note = "只写候选研究对象，不改 canonical Program。"
     elif intent_kind == "draft_program":
-        command_preview = "programs/gait_phase_binary_v0/program.json <= frozen ProgramMD after approve"
-        target_scope = "ProgramMD:gait_phase_binary_v0"
-        boundary_note = "ProgramMD 草案只在 approve 后冻结；不会直接启动实验。"
+        program_id = str(program_draft.get("program_id") or "program") if isinstance(program_draft, dict) else "program"
+        command_preview = f"programs/{program_id}/program.json <= frozen Program after approve"
+        target_scope = f"Program:{program_id}"
+        boundary_note = "Program 草案只在 approve 后冻结；不会直接启动实验。"
     elif intent_kind == "draft_amendment":
         command_preview = "amendments.inbox.json <= program_amendment_draft"
         target_scope = "canonical_program"
@@ -288,9 +305,9 @@ def classify_user_turn(command_text: str, snapshot: dict[str, Any]) -> dict[str,
         command_preview = ""
         target_scope = "intake"
         if any(keyword in lowered or keyword in normalized for keyword in GREETING_KEYWORDS):
-            summary = "用户开始一段 Intake 对话。"
+            summary = "用户开始一段计划对话。"
         else:
-            summary = "用户给了一个还不足以形成 ProgramMD 的模糊输入。"
+            summary = "用户给了一个还不足以形成 Program 的模糊输入。"
 
     return {
         "recognized": intent_kind != "cancel_or_help" or any(keyword in lowered for keyword in HELP_KEYWORDS),
@@ -306,7 +323,7 @@ def classify_user_turn(command_text: str, snapshot: dict[str, Any]) -> dict[str,
         "active_track_id": active_track_id,
         "track_goal": track_goal,
         "smoke_command": smoke_command,
-        "program_draft": build_gait_phase_program_draft(normalized) if intent_kind == "draft_program" else None,
+        "program_draft": program_draft,
     }
 
 
@@ -318,7 +335,7 @@ def build_confirmation_message(intent: dict[str, Any]) -> str:
         label = draft.get("label_definition") if isinstance(draft.get("label_definition"), dict) else {}
         return "\n".join(
             [
-                "我先不启动实验。已整理出 ProgramMD 草案，等待确认。",
+                "我先不启动实验。已整理出 Program 草案，等待确认。",
                 f"- 研究目标：{goal.get('statement') or draft.get('program_id') or '-'}",
                 f"- 任务类型：{goal.get('task_type') or '-'}",
                 f"- 主指标：{metrics.get('primary') or '-'}",
@@ -349,12 +366,12 @@ def build_intake_chat_message(intent: dict[str, Any]) -> str:
     greeting = any(keyword in lowered or keyword in normalized for keyword in GREETING_KEYWORDS)
     if greeting:
         return (
-            "你好，我是 AutoBCI 的 Intake Agent。你可以先用一句话描述想研究的脑接口问题，"
+            "你好，我是 AutoBCI 的研究计划助手。你可以先用一句话描述想研究的任务、数据和指标，"
             "不确定也可以。\n"
-            "例如：我想看看步态二分类能不能做起来。"
+            "例如：我想看看纯图像 ship / not-ship 二分类能不能做起来。"
         )
     return (
-        "我还不能把这句话整理成可执行的 ProgramMD 草案。你可以先描述："
+        "我还不能把这句话整理成可执行的 Program 草案。你可以先描述："
         "研究目标、可用数据、标签从哪里来、什么指标算成功；不确定的地方可以直接说不确定。"
     )
 
@@ -372,10 +389,10 @@ def build_direct_result_message(intent: dict[str, Any], result_body: str) -> str
 
 def build_help_message() -> str:
     return (
-        "可用命令：status | dashboard | report latest | program show | projects | help | quit\n"
-        "生命周期：continue | snapshot | fork <snapshot_id> | new clean | archive | clear | resume <id> | reset current run\n"
-        "聊天动作：program | propose | amend | run smoke | approve | cancel\n"
-        "也可以直接输入自然语言，例如“现在在跑什么”“打开 dashboard”“我想看看步态二分类能不能做起来”。"
+        "常用命令：new | data | run | model | theme | tasks | dashboard | remote\n"
+        "高级命令：program show | status | help | quit | plan show | director | snapshot | fork | archive | resume\n"
+        "输入 / 只显示常用入口；高级命令仍可直接输入。\n"
+        "也可以直接说自然语言，例如“新起一个任务”“切换任务”“打开 dashboard”。"
     )
 
 
@@ -440,7 +457,7 @@ def draft_amendment(paths: AutoBciControlPlanePaths, intent: dict[str, Any]) -> 
         run_id=amendment_id,
         payload={
             "requested_by": "user",
-            "reason": normalized or "用户请求修订 ProgramMD。",
+            "reason": normalized or "用户请求修订 Program。",
             "requested_change": {
                 "normalized_request": normalized,
                 "blocked_fields": payload["blocked_fields"],
@@ -456,7 +473,7 @@ def draft_amendment(paths: AutoBciControlPlanePaths, intent: dict[str, Any]) -> 
 def freeze_program_from_intent(paths: AutoBciControlPlanePaths, intent: dict[str, Any]) -> tuple[str, list[str]]:
     draft = intent.get("program_draft")
     if not isinstance(draft, dict):
-        draft = build_gait_phase_program_draft(str(intent.get("normalized_request") or ""))
+        draft = build_program_draft_from_request(str(intent.get("normalized_request") or ""))
     run_id = f"program-freeze-{time.strftime('%Y%m%d%H%M%S', time.gmtime())}-{uuid.uuid4().hex[:6]}"
     frozen, refs = freeze_program_contract(paths, draft, run_id=run_id)
     snapshot_ref = next((ref for ref in refs if ref.endswith(f"{run_id}.json")), "")
@@ -544,5 +561,129 @@ def append_shell_trace(
         "artifact_refs": list(artifact_refs or []),
         "result_status": result_status,
     }
+    audit_refs = append_judgment_chain_audit(
+        paths,
+        session_id=session_id,
+        turn_id=turn_id,
+        intent=intent,
+        command_text=command_text,
+        ok=ok,
+        message=message,
+        confirmation_result=confirmation_result,
+        artifact_refs=artifact_refs,
+        result_status=result_status,
+    )
+    if audit_refs:
+        row["audit_refs"] = audit_refs
     append_jsonl(paths.control_events, row)
     return row
+
+
+def _redact_audit_text(value: Any, *, limit: int = 800) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = re.sub(r"sk-(?:api-)?[A-Za-z0-9_-]{12,}", "sk-[redacted]", text)
+    text = re.sub(r"(?i)(api[_ -]?key\s*[:=]\s*)[^\s,;]+", r"\1[redacted]", text)
+    text = " ".join(text.split())
+    return text[:limit] + ("..." if len(text) > limit else "")
+
+
+def _audit_program_brief(intent: dict[str, Any]) -> dict[str, Any]:
+    draft = intent.get("program_draft")
+    if not isinstance(draft, dict):
+        return {}
+    return {
+        "program_id": str(draft.get("program_id") or ""),
+        "task_type": str(draft.get("task_type") or ""),
+        "primary_metric": str(draft.get("primary_metric") or ""),
+        "status": str(draft.get("status") or ""),
+    }
+
+
+def _safe_session_filename(session_id: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(session_id or "session").strip()).strip(".-")
+    return slug[:80] or "session"
+
+
+def append_judgment_chain_audit(
+    paths: AutoBciControlPlanePaths,
+    *,
+    session_id: str,
+    turn_id: str,
+    intent: dict[str, Any],
+    command_text: str,
+    ok: bool,
+    message: str,
+    confirmation_result: str,
+    artifact_refs: list[str] | None = None,
+    result_status: str,
+) -> list[str]:
+    """Persist an auditable decision chain summary, not raw model chain-of-thought."""
+
+    recorded_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    audit_dir = paths.monitor_dir / "audit"
+    jsonl_path = audit_dir / "judgment_chain.jsonl"
+    session_path = audit_dir / "sessions" / f"{_safe_session_filename(session_id)}.md"
+    row = {
+        "schema_version": AUDIT_SCHEMA_VERSION,
+        "recorded_at": recorded_at,
+        "session_id": str(session_id or ""),
+        "turn_id": str(turn_id or ""),
+        "actor": "AutoBCI",
+        "input": {
+            "user_excerpt": _redact_audit_text(command_text, limit=500),
+            "normalized_request": _redact_audit_text(intent.get("normalized_request") or normalize_request(command_text), limit=500),
+        },
+        "decision": {
+            "intent_kind": str(intent.get("user_intent_kind") or ""),
+            "proposed_action": str(intent.get("proposed_action") or ""),
+            "target_scope": str(intent.get("target_scope") or ""),
+            "decision_summary": _redact_audit_text(intent.get("summary") or intent.get("agent_message") or message, limit=500),
+            "requires_confirmation": bool(intent.get("requires_confirmation")),
+            "confirmation_result": confirmation_result,
+            "result_status": result_status,
+            "ok": bool(ok),
+        },
+        "evidence": {
+            "command_preview": _redact_audit_text(intent.get("command_preview"), limit=500),
+            "artifact_refs": list(artifact_refs or []),
+            "program": _audit_program_brief(intent),
+        },
+        "reasoning_visibility": {
+            "mode": str(intent.get("reasoning_mode") or "audit"),
+            "raw_cot_requested": str(intent.get("reasoning_mode") or "audit") in {"raw", "debug"},
+            "raw_cot_visible": bool(intent.get("raw_reasoning")) and str(intent.get("reasoning_mode") or "audit") in {"raw", "debug"},
+            "raw_cot_saved": bool(intent.get("raw_reasoning")) and str(intent.get("reasoning_mode") or "audit") in {"raw", "debug"},
+            "saved_form": "provider_raw_reasoning" if bool(intent.get("raw_reasoning")) and str(intent.get("reasoning_mode") or "audit") in {"raw", "debug"} else "audit_summary",
+            "note": "AutoBCI always stores auditable decisions, evidence, tools, and artifacts; raw CoT is stored only when debug mode is enabled and the provider explicitly returns it.",
+        },
+        "output": {
+            "message_excerpt": _redact_audit_text(message, limit=700),
+        },
+    }
+    if row["reasoning_visibility"]["raw_cot_saved"]:
+        row["reasoning_visibility"]["raw_cot_excerpt"] = _redact_audit_text(intent.get("raw_reasoning"), limit=3000)
+    append_jsonl(jsonl_path, row)
+
+    heading = "# AutoBCI 可审计判断链\n\n" if not session_path.exists() else ""
+    cot_line = (
+        "- CoT：已保存 provider 显式返回的 raw reasoning 摘要。"
+        if row["reasoning_visibility"]["raw_cot_saved"]
+        else "- CoT：未保存原始思维链；本文件保存可审计判断摘要、工具动作和 artifact 引用。"
+    )
+    chunk = "\n".join(
+        [
+            f"## {recorded_at} · {turn_id or '-'}",
+            "",
+            f"- 输入：{row['input']['user_excerpt'] or '-'}",
+            f"- 判断：{row['decision']['decision_summary'] or row['decision']['proposed_action'] or '-'}",
+            f"- 动作：{row['decision']['proposed_action'] or '-'} · 状态：{result_status or '-'} · 确认：{confirmation_result or '-'}",
+            f"- 证据：{', '.join(row['evidence']['artifact_refs']) if row['evidence']['artifact_refs'] else '-'}",
+            cot_line,
+            "",
+        ]
+    )
+    previous = read_text(session_path, "")
+    write_text_atomic(session_path, heading + previous + chunk)
+    return [str(jsonl_path), str(session_path)]

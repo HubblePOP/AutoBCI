@@ -33,6 +33,10 @@ def _new_project_id() -> str:
     return f"proj-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
 
+def _new_topic_id() -> str:
+    return f"topic-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
+
+
 def _new_snapshot_id() -> str:
     return f"snap-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
@@ -52,6 +56,16 @@ def ensure_lifecycle_store(conn_or_paths: sqlite3.Connection | Any) -> None:
     try:
         conn.executescript(
             """
+            create table if not exists topics (
+              topic_id text primary key,
+              topic_title text not null,
+              task_fingerprint text not null default '',
+              status text not null default 'active',
+              created_at text not null,
+              updated_at text not null,
+              tags_json text not null default '[]'
+            );
+
             create table if not exists projects (
               project_id text primary key,
               title text not null,
@@ -59,6 +73,13 @@ def ensure_lifecycle_store(conn_or_paths: sqlite3.Connection | Any) -> None:
               created_at text not null,
               updated_at text not null,
               archived_at text not null default '',
+              topic_id text not null default '',
+              attempt_index integer not null default 0,
+              attempt_title text not null default '',
+              task_fingerprint text not null default '',
+              debug_flag integer not null default 0,
+              title_source text not null default '',
+              tags_json text not null default '[]',
               parent_project_id text not null default '',
               current_session_id text not null default '',
               current_program_id text not null default '',
@@ -129,12 +150,29 @@ def ensure_lifecycle_store(conn_or_paths: sqlite3.Connection | Any) -> None:
               key text primary key,
               value text not null
             );
+
+            create index if not exists idx_topics_fingerprint on topics(task_fingerprint);
             """
         )
+        _ensure_column(conn, "projects", "topic_id", "text not null default ''")
+        _ensure_column(conn, "projects", "attempt_index", "integer not null default 0")
+        _ensure_column(conn, "projects", "attempt_title", "text not null default ''")
+        _ensure_column(conn, "projects", "task_fingerprint", "text not null default ''")
+        _ensure_column(conn, "projects", "debug_flag", "integer not null default 0")
+        _ensure_column(conn, "projects", "title_source", "text not null default ''")
+        _ensure_column(conn, "projects", "tags_json", "text not null default '[]'")
+        conn.execute("create index if not exists idx_projects_topic_id on projects(topic_id)")
+        conn.execute("create index if not exists idx_projects_task_fingerprint on projects(task_fingerprint)")
         conn.commit()
     finally:
         if owns_connection:
             conn.close()
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, declaration: str) -> None:
+    existing = {str(row[1]) for row in conn.execute(f"pragma table_info({table})").fetchall()}
+    if column not in existing:
+        conn.execute(f"alter table {table} add column {column} {declaration}")
 
 
 def _record_event(
@@ -178,10 +216,26 @@ def _row_to_project(row: sqlite3.Row | None) -> dict[str, Any]:
     project["pending_action"] = _json_loads(project.pop("pending_action_json", "null"), None)
     project["run_ids"] = _json_loads(project.pop("run_ids_json", "[]"), [])
     project["artifact_refs"] = _json_loads(project.pop("artifact_refs_json", "[]"), [])
+    project["tags"] = _json_loads(project.pop("tags_json", "[]"), [])
+    try:
+        project["attempt_index"] = int(project.get("attempt_index") or 0)
+    except (TypeError, ValueError):
+        project["attempt_index"] = 0
+    project["debug_flag"] = str(project.get("debug_flag") or "").lower() in {"1", "true", "yes"}
+    if not project.get("attempt_title"):
+        project["attempt_title"] = project.get("title", "")
     project["experiment_id"] = project["project_id"]
     project["intake_session_id"] = project.get("current_session_id", "")
     project["program_id"] = project.get("current_program_id", "")
     return project
+
+
+def _row_to_topic(row: sqlite3.Row | None) -> dict[str, Any]:
+    if row is None:
+        return {}
+    topic = dict(row)
+    topic["tags"] = _json_loads(topic.pop("tags_json", "[]"), [])
+    return topic
 
 
 def _upsert_session(
@@ -251,26 +305,42 @@ def create_project(
     parent_project_id: str = "",
     source_snapshot_id: str = "",
     manifest_path: str = "",
+    topic_id: str = "",
+    attempt_index: int = 0,
+    attempt_title: str = "",
+    task_fingerprint: str = "",
+    debug_flag: bool = False,
+    title_source: str = "",
+    tags: list[str] | None = None,
     set_current: bool = True,
 ) -> dict[str, Any]:
     now = utc_now()
     project_id = project_id or _new_project_id()
     run_ids = list(run_ids or [])
     artifact_refs = list(artifact_refs or [])
+    tags = [str(item) for item in tags or [] if str(item).strip()]
     with _connect(paths) as conn:
         conn.execute(
             """
             insert into projects (
               project_id, title, status, created_at, updated_at, archived_at,
-              parent_project_id, current_session_id, current_program_id, program_status,
-              active_run_id, source_snapshot_id, pending_action_json, run_ids_json,
-              artifact_refs_json, manifest_path
+              topic_id, attempt_index, attempt_title, task_fingerprint, debug_flag,
+              title_source, tags_json, parent_project_id, current_session_id,
+              current_program_id, program_status, active_run_id, source_snapshot_id,
+              pending_action_json, run_ids_json, artifact_refs_json, manifest_path
             )
-            values (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             on conflict(project_id) do update set
               title=excluded.title,
               status=excluded.status,
               updated_at=excluded.updated_at,
+              topic_id=excluded.topic_id,
+              attempt_index=excluded.attempt_index,
+              attempt_title=excluded.attempt_title,
+              task_fingerprint=excluded.task_fingerprint,
+              debug_flag=excluded.debug_flag,
+              title_source=excluded.title_source,
+              tags_json=excluded.tags_json,
               parent_project_id=excluded.parent_project_id,
               current_session_id=excluded.current_session_id,
               current_program_id=excluded.current_program_id,
@@ -288,6 +358,13 @@ def create_project(
                 status,
                 now,
                 now,
+                topic_id,
+                int(attempt_index or 0),
+                attempt_title or title or "未命名项目",
+                task_fingerprint,
+                1 if debug_flag else 0,
+                title_source,
+                _json_dumps(tags),
                 parent_project_id,
                 intake_session_id,
                 program_id,
@@ -302,6 +379,8 @@ def create_project(
         )
         _upsert_session(conn, project_id=project_id, session_id=intake_session_id, now=now)
         _upsert_program_ref(conn, project_id=project_id, program_id=program_id, status=program_status, now=now)
+        if topic_id:
+            conn.execute("update topics set updated_at = ? where topic_id = ?", (now, topic_id))
         if set_current:
             _set_current_project(conn, project_id)
         _record_event(
@@ -312,8 +391,7 @@ def create_project(
             payload={"status": status, "source_snapshot_id": source_snapshot_id},
         )
         conn.commit()
-        row = conn.execute("select * from projects where project_id = ?", (project_id,)).fetchone()
-    return _row_to_project(row)
+    return get_project(paths, project_id)
 
 
 def import_experiment_manifest(paths: Any, manifest: dict[str, Any], *, set_current: bool = False) -> dict[str, Any]:
@@ -334,6 +412,13 @@ def import_experiment_manifest(paths: Any, manifest: dict[str, Any], *, set_curr
         parent_project_id=str(manifest.get("parent_project_id") or ""),
         source_snapshot_id=str(manifest.get("source_snapshot_id") or ""),
         manifest_path=str(manifest.get("path") or ""),
+        topic_id=str(manifest.get("topic_id") or ""),
+        attempt_index=int(manifest.get("attempt_index") or 0),
+        attempt_title=str(manifest.get("attempt_title") or manifest.get("title") or ""),
+        task_fingerprint=str(manifest.get("task_fingerprint") or ""),
+        debug_flag=bool(manifest.get("debug_flag")),
+        title_source=str(manifest.get("title_source") or ""),
+        tags=[str(item) for item in manifest.get("tags", [])] if isinstance(manifest.get("tags"), list) else [],
         set_current=set_current,
     )
 
@@ -346,11 +431,131 @@ def set_current_project(paths: Any, project_id: str) -> None:
         conn.commit()
 
 
+def create_topic(
+    paths: Any,
+    *,
+    topic_title: str,
+    task_fingerprint: str = "",
+    topic_id: str | None = None,
+    status: str = "active",
+    tags: list[str] | None = None,
+) -> dict[str, Any]:
+    now = utc_now()
+    topic_id = topic_id or _new_topic_id()
+    tags = [str(item) for item in tags or [] if str(item).strip()]
+    with _connect(paths) as conn:
+        conn.execute(
+            """
+            insert into topics (
+              topic_id, topic_title, task_fingerprint, status, created_at, updated_at, tags_json
+            )
+            values (?, ?, ?, ?, ?, ?, ?)
+            on conflict(topic_id) do update set
+              topic_title=excluded.topic_title,
+              task_fingerprint=excluded.task_fingerprint,
+              status=excluded.status,
+              updated_at=excluded.updated_at,
+              tags_json=excluded.tags_json
+            """,
+            (
+                topic_id,
+                topic_title or "未命名任务",
+                task_fingerprint,
+                status or "active",
+                now,
+                now,
+                _json_dumps(tags),
+            ),
+        )
+        _record_event(
+            conn,
+            event_type="topic_upsert",
+            payload={"topic_id": topic_id, "task_fingerprint": task_fingerprint, "status": status},
+        )
+        conn.commit()
+    return get_topic(paths, topic_id)
+
+
+def update_topic(
+    paths: Any,
+    topic_id: str,
+    *,
+    topic_title: str | None = None,
+    task_fingerprint: str | None = None,
+    status: str | None = None,
+    tags: list[str] | None = None,
+    event_type: str = "topic_update",
+) -> dict[str, Any]:
+    current = get_topic(paths, topic_id)
+    if not current:
+        raise ValueError(f"找不到 Topic：{topic_id}")
+    next_tags = [str(item) for item in tags] if tags is not None else list(current.get("tags") or [])
+    now = utc_now()
+    with _connect(paths) as conn:
+        conn.execute(
+            """
+            update topics set
+              topic_title = ?,
+              task_fingerprint = ?,
+              status = ?,
+              updated_at = ?,
+              tags_json = ?
+            where topic_id = ?
+            """,
+            (
+                topic_title if topic_title is not None else current.get("topic_title", "未命名任务"),
+                task_fingerprint if task_fingerprint is not None else current.get("task_fingerprint", ""),
+                status if status is not None else current.get("status", "active"),
+                now,
+                _json_dumps(next_tags),
+                topic_id,
+            ),
+        )
+        _record_event(conn, event_type=event_type, payload={"topic_id": topic_id})
+        conn.commit()
+    return get_topic(paths, topic_id)
+
+
+def get_topic(paths: Any, topic_id: str) -> dict[str, Any]:
+    if not topic_id:
+        return {}
+    with _connect(paths) as conn:
+        row = conn.execute("select * from topics where topic_id = ?", (topic_id,)).fetchone()
+    return _row_to_topic(row)
+
+
+def find_topic_by_fingerprint(paths: Any, task_fingerprint: str) -> dict[str, Any]:
+    if not task_fingerprint:
+        return {}
+    with _connect(paths) as conn:
+        row = conn.execute(
+            """
+            select * from topics
+            where task_fingerprint = ?
+            order by updated_at desc, topic_id desc
+            limit 1
+            """,
+            (task_fingerprint,),
+        ).fetchone()
+    return _row_to_topic(row)
+
+
+def list_topics(paths: Any, *, include_archived: bool = True) -> list[dict[str, Any]]:
+    where = "" if include_archived else "where status != 'archived'"
+    with _connect(paths) as conn:
+        rows = conn.execute(
+            f"select * from topics {where} order by updated_at desc, topic_id desc"
+        ).fetchall()
+    return [_row_to_topic(row) for row in rows]
+
+
 def get_current_project(paths: Any) -> dict[str, Any]:
     with _connect(paths) as conn:
         row = conn.execute(
             """
-            select p.* from projects p
+            select p.*, t.topic_title as topic_title, t.status as topic_status
+            from projects p
+            left join topics t on t.topic_id = p.topic_id
             join current_state c on c.value = p.project_id
             where c.key = 'current_project_id'
             """
@@ -360,13 +565,28 @@ def get_current_project(paths: Any) -> dict[str, Any]:
 
 def get_project(paths: Any, project_id: str) -> dict[str, Any]:
     with _connect(paths) as conn:
-        row = conn.execute("select * from projects where project_id = ?", (project_id,)).fetchone()
+        row = conn.execute(
+            """
+            select p.*, t.topic_title as topic_title, t.status as topic_status
+            from projects p
+            left join topics t on t.topic_id = p.topic_id
+            where p.project_id = ?
+            """,
+            (project_id,),
+        ).fetchone()
     return _row_to_project(row)
 
 
 def list_projects(paths: Any) -> list[dict[str, Any]]:
     with _connect(paths) as conn:
-        rows = conn.execute("select * from projects order by updated_at desc, project_id desc").fetchall()
+        rows = conn.execute(
+            """
+            select p.*, t.topic_title as topic_title, t.status as topic_status
+            from projects p
+            left join topics t on t.topic_id = p.topic_id
+            order by p.updated_at desc, p.project_id desc
+            """
+        ).fetchall()
     return [_row_to_project(row) for row in rows]
 
 
@@ -385,6 +605,13 @@ def update_project(
     clear_pending: bool = False,
     run_ids: list[str] | None = None,
     artifact_refs: list[str] | None = None,
+    topic_id: str | None = None,
+    attempt_index: int | None = None,
+    attempt_title: str | None = None,
+    task_fingerprint: str | None = None,
+    debug_flag: bool | None = None,
+    title_source: str | None = None,
+    tags: list[str] | None = None,
     set_current: bool = False,
     event_type: str = "project_update",
 ) -> dict[str, Any]:
@@ -394,6 +621,7 @@ def update_project(
     next_pending = None if clear_pending else (pending_action if pending_action is not None else current.get("pending_action"))
     next_run_ids = list(run_ids) if run_ids is not None else list(current.get("run_ids") or [])
     next_artifact_refs = list(artifact_refs) if artifact_refs is not None else list(current.get("artifact_refs") or [])
+    next_tags = [str(item) for item in tags] if tags is not None else list(current.get("tags") or [])
     now = utc_now()
     with _connect(paths) as conn:
         conn.execute(
@@ -403,6 +631,13 @@ def update_project(
               status = ?,
               updated_at = ?,
               archived_at = ?,
+              topic_id = ?,
+              attempt_index = ?,
+              attempt_title = ?,
+              task_fingerprint = ?,
+              debug_flag = ?,
+              title_source = ?,
+              tags_json = ?,
               current_session_id = ?,
               current_program_id = ?,
               program_status = ?,
@@ -417,6 +652,13 @@ def update_project(
                 status if status is not None else current.get("status", "active"),
                 now,
                 archived_at if archived_at is not None else current.get("archived_at", ""),
+                topic_id if topic_id is not None else current.get("topic_id", ""),
+                int(attempt_index if attempt_index is not None else current.get("attempt_index", 0) or 0),
+                attempt_title if attempt_title is not None else current.get("attempt_title", current.get("title", "")),
+                task_fingerprint if task_fingerprint is not None else current.get("task_fingerprint", ""),
+                1 if (debug_flag if debug_flag is not None else bool(current.get("debug_flag"))) else 0,
+                title_source if title_source is not None else current.get("title_source", ""),
+                _json_dumps(next_tags),
                 session_id if session_id is not None else current.get("current_session_id", ""),
                 program_id if program_id is not None else current.get("program_id", ""),
                 program_status if program_status is not None else current.get("program_status", "not_started"),
@@ -441,8 +683,7 @@ def update_project(
             _set_current_project(conn, project_id)
         _record_event(conn, event_type=event_type, project_id=project_id)
         conn.commit()
-        row = conn.execute("select * from projects where project_id = ?", (project_id,)).fetchone()
-    return _row_to_project(row)
+    return get_project(paths, project_id)
 
 
 def archive_project(paths: Any, project_id: str, *, reason: str = "archive") -> dict[str, Any]:
@@ -455,8 +696,55 @@ def archive_project(paths: Any, project_id: str, *, reason: str = "archive") -> 
     )
 
 
+def active_attempt_count(paths: Any, topic_id: str) -> int:
+    if not topic_id:
+        return 0
+    with _connect(paths) as conn:
+        row = conn.execute(
+            "select count(*) from projects where topic_id = ? and status = 'active'",
+            (topic_id,),
+        ).fetchone()
+    return int(row[0] if row else 0)
+
+
+def next_attempt_index(paths: Any, topic_id: str) -> int:
+    if not topic_id:
+        return 1
+    with _connect(paths) as conn:
+        row = conn.execute(
+            "select coalesce(max(attempt_index), 0) from projects where topic_id = ?",
+            (topic_id,),
+        ).fetchone()
+    return int(row[0] if row else 0) + 1
+
+
+def archive_topic(paths: Any, topic_id: str, *, reason: str = "archive_topic") -> dict[str, Any]:
+    topic = get_topic(paths, topic_id)
+    if not topic:
+        raise ValueError(f"找不到 Topic：{topic_id}")
+    now = utc_now()
+    with _connect(paths) as conn:
+        conn.execute(
+            "update topics set status = 'archived', updated_at = ? where topic_id = ?",
+            (now, topic_id),
+        )
+        conn.execute(
+            """
+            update projects set status = 'archived', archived_at = ?, updated_at = ?
+            where topic_id = ?
+            """,
+            (now, now, topic_id),
+        )
+        _record_event(conn, event_type=reason, payload={"topic_id": topic_id})
+        conn.commit()
+    return get_topic(paths, topic_id)
+
+
 def resume_project(paths: Any, project_id: str) -> dict[str, Any]:
     project = update_project(paths, project_id, status="active", set_current=True, event_type="resume_project")
+    topic_id = str(project.get("topic_id") or "")
+    if topic_id:
+        update_topic(paths, topic_id, status="active", event_type="resume_topic")
     return project
 
 
@@ -532,6 +820,7 @@ def fork_project_from_snapshot(paths: Any, snapshot_id: str, *, new_intake_sessi
     source = get_project(paths, str(snapshot.get("project_id") or ""))
     if not source:
         raise ValueError(f"快照缺少来源项目：{snapshot_id}")
+    topic_id = str(source.get("topic_id") or "")
     forked = create_project(
         paths,
         title=f"{source.get('title') or '未命名项目'} fork",
@@ -543,6 +832,13 @@ def fork_project_from_snapshot(paths: Any, snapshot_id: str, *, new_intake_sessi
         artifact_refs=[str(item) for item in snapshot.get("artifact_refs", [])],
         parent_project_id=str(source.get("project_id") or ""),
         source_snapshot_id=snapshot_id,
+        topic_id=topic_id,
+        attempt_index=next_attempt_index(paths, topic_id) if topic_id else 0,
+        attempt_title=f"{source.get('attempt_title') or source.get('title') or '未命名项目'} fork",
+        task_fingerprint=str(source.get("task_fingerprint") or ""),
+        debug_flag=bool(source.get("debug_flag")),
+        title_source=str(source.get("title_source") or "fork"),
+        tags=list(source.get("tags") or []),
         set_current=True,
     )
     return forked
@@ -572,9 +868,13 @@ def format_projects_list(paths: Any) -> str:
     lines = ["项目列表："]
     for item in rows[:20]:
         marker = "*" if str(item.get("project_id") or "") == current_id else "-"
+        topic_title = str(item.get("topic_title") or ("未归组任务" if not item.get("topic_id") else item.get("topic_id") or "-"))
+        attempt_title = str(item.get("attempt_title") or item.get("title") or "未命名尝试")
+        debug = " · debug" if item.get("debug_flag") else ""
         lines.append(
             f"{marker} {item.get('project_id')} · {item.get('status') or '-'} · "
-            f"{item.get('title') or '未命名项目'} · Session:{item.get('current_session_id') or '-'} · "
-            f"ProgramMD:{item.get('program_status') or 'not_started'} · Run:{item.get('active_run_id') or '-'}"
+            f"Topic:{topic_title} · Attempt:{item.get('attempt_index') or '-'} {attempt_title}{debug} · "
+            f"Session:{item.get('current_session_id') or '-'} · "
+            f"Program:{item.get('program_status') or 'not_started'} · Run:{item.get('active_run_id') or '-'}"
         )
     return "\n".join(lines)

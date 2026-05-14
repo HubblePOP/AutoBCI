@@ -57,7 +57,7 @@ def build_judge_report(
     if "director_scratchpad" in judge_request:
         failures.append("judge_request leaked director_scratchpad")
     if not _same_split(program, result):
-        failures.append("result split_policy differs from frozen ProgramMD")
+        failures.append("result split_policy differs from frozen Program")
     if "confusion_matrix" not in metrics and "confusion_matrix" not in result:
         warnings.append("missing confusion_matrix for gait binary reproducibility review")
 

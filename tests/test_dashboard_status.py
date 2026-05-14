@@ -23,6 +23,7 @@ from scripts.serve_dashboard import (
     build_reasoning_blocks,
     build_iteration_cards,
     build_mainline_progress,
+    build_reference_progress_plot,
     build_mission_control_payload,
     read_recent_control_events,
     record_control_event,
@@ -182,7 +183,7 @@ class DashboardStatusTests(unittest.TestCase):
         self.assertEqual(payload["latest_run_id"], "gait-phase-eeg-night-r03-feature-tcn")
         self.assertEqual(payload["latest_detail"]["track_id"], "gait_phase_eeg_feature_tcn")
         axis_days = (((payload.get("plots") or {}).get("primary") or {}).get("axis") or {}).get("days") or []
-        self.assertEqual([day.get("date") for day in axis_days], ["2026-04-14"])
+        self.assertEqual([day.get("date") for day in axis_days], ["2026-04-11", "2026-04-14"])
 
     def test_query_registered_process_snapshots_marks_feature_gru_and_feature_tcn_as_high_memory(self) -> None:
         snapshots = dashboard.query_registered_process_snapshots(
@@ -217,12 +218,318 @@ class DashboardStatusTests(unittest.TestCase):
         self.assertIn('data-tab="thinking"', html)
         self.assertIn('data-tab="artifacts"', html)
 
+    def test_dashboard_index_declares_rsvp_ship_image_panel(self) -> None:
+        html = Path("/Users/mac/Code/AutoBci/dashboard/index.html").read_text()
+
+        self.assertIn("rsvp-ship-image-panel", html)
+        self.assertIn("renderRsvpShipImage", html)
+        self.assertIn("const taskScopedProgress = activeTask?.available ? {} : progress;", html)
+        self.assertIn("renderTopicInbox(mission, activeTask?.available ? {} : (data || {}));", html)
+        self.assertIn('id="task-switcher"', html)
+        self.assertIn("TASK_SELECTION_KEY", html)
+        self.assertIn("renderTaskSwitcher", html)
+
+    def test_product_subject_source_docs_define_autobci_as_research_loop_harness(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        docs = {
+            "brief": repo_root / "memory" / "docs" / "dev_pack_2026_04_20" / "00_START_HERE" / "00_ONE_PAGE_BRIEF.md",
+            "decisions": repo_root / "memory" / "docs" / "dev_pack_2026_04_20" / "00_START_HERE" / "01_CURRENT_DECISIONS.md",
+            "architecture": repo_root / "memory" / "docs" / "dev_pack_2026_04_20" / "02_ARCHITECTURE" / "00_ARCHITECTURE_OVERVIEW.md",
+            "control_plane": repo_root / "memory" / "docs" / "dev_pack_2026_04_20" / "02_ARCHITECTURE" / "01_AGENT_NATIVE_CONTROL_PLANE.md",
+            "agent_brief": repo_root / "memory" / "docs" / "dev_pack_2026_04_20" / "08_LOCAL_AGENT_HANDOFF" / "AGENT_BRIEF.md",
+            "direction_queue": repo_root / "memory" / "docs" / "dev_pack_2026_04_20" / "08_LOCAL_AGENT_HANDOFF" / "DIRECTOR_AGENT.md",
+            "agents": repo_root / "AGENTS.md",
+        }
+        contents = {name: path.read_text(encoding="utf-8") for name, path in docs.items()}
+
+        for content in contents.values():
+            self.assertIn("科研闭环 APP / harness", content)
+            self.assertNotIn("Agent-native AutoResearch control plane", content)
+            self.assertNotIn("Research Manager Agent", content)
+            self.assertNotIn("Worker Pool:", content)
+
+        self.assertNotIn("AutoResearch Agent 产品", contents["agent_brief"])
+        self.assertNotIn("原生 Agent 形态", contents["agent_brief"])
+        self.assertNotIn("原生 Agent 形态", contents["agents"])
+        self.assertNotIn("Director 队列", contents["agent_brief"])
+        self.assertNotIn("Director 队列", contents["agents"])
+        self.assertIn("Program + State + Ledger + Human Gate", contents["architecture"])
+        self.assertIn("单主控科研闭环", contents["control_plane"])
+        self.assertIn("研究方向队列生成器", contents["direction_queue"])
+
+    def test_build_rsvp_ship_image_summary_ranks_candidates(self) -> None:
+        payload = {
+            "run_id": "image-run",
+            "created_at": "2026-05-10T00:00:00Z",
+            "program_id": "rsvp_ship_image_only_v0",
+            "dataset_name": "Downloads/RSVP跨模态数据",
+            "status": "completed_image_only",
+            "target_mode": "rsvp_ship_image_classification",
+            "primary_metric": "test_balanced_accuracy",
+            "selected_model": {
+                "model_family": "image_knn3_pixel_classifier",
+                "model_backend": "numpy_knn",
+                "config": {"feature_family": "grayscale_pixels_16x16", "classifier": "knn", "k": 3},
+            },
+            "val_metrics": {"balanced_accuracy": 0.9},
+            "test_metrics": {"balanced_accuracy": 0.8, "macro_f1": 0.75, "confusion_matrix": [[4, 1], [1, 4]]},
+            "split_summary": {"train": {"total": 8, "target": 4, "nontarget": 4}},
+            "audit_summary": {"labeled_unique_hashes": 12},
+            "no_cross_modal_claim": True,
+            "eeg_status": "blocked_missing_eeg_or_events",
+            "candidates": [
+                {
+                    "model_family": "majority_baseline",
+                    "model_backend": "constant",
+                    "config": {"feature_family": "none"},
+                    "val_metrics": {"balanced_accuracy": 0.5},
+                    "test_metrics": {"balanced_accuracy": 0.5, "macro_f1": 0.33},
+                },
+                {
+                    "model_family": "image_knn3_pixel_classifier",
+                    "model_backend": "numpy_knn",
+                    "config": {"feature_family": "grayscale_pixels_16x16", "classifier": "knn", "k": 3},
+                    "val_metrics": {"balanced_accuracy": 0.9},
+                    "test_metrics": {"balanced_accuracy": 0.8, "macro_f1": 0.75},
+                },
+            ],
+        }
+
+        summary = dashboard.build_rsvp_ship_image_summary(payload, director_plan={"plan_id": "plan-1", "tracks": [{}, {}]})
+
+        self.assertTrue(summary["available"])
+        self.assertEqual(summary["program_id"], "rsvp_ship_image_only_v0")
+        self.assertEqual(summary["candidate_count"], 2)
+        self.assertEqual(summary["director_plan"]["track_count"], 2)
+        self.assertEqual(summary["top_candidates"][0]["model_family"], "image_knn3_pixel_classifier")
+
+    def test_build_rsvp_ship_image_history_summarizes_sota_trajectory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for run_id, created_at, selected_ba, best_ba, best_family in [
+                ("run-001", "2026-05-10T01:00:00Z", 0.60, 0.62, "pixel"),
+                ("run-002", "2026-05-10T02:00:00Z", 0.61, 0.80, "hog"),
+                ("run-003", "2026-05-10T03:00:00Z", 0.70, 0.78, "texture"),
+            ]:
+                run_dir = root / run_id
+                run_dir.mkdir()
+                (run_dir / "image_result.json").write_text(
+                    json.dumps(
+                        {
+                            "run_id": run_id,
+                            "created_at": created_at,
+                            "selected_model": {"model_family": "selected"},
+                            "test_metrics": {"balanced_accuracy": selected_ba},
+                            "candidates": [
+                                {
+                                    "model_family": best_family,
+                                    "config": {"feature_family": f"{best_family}_feature"},
+                                    "test_metrics": {"balanced_accuracy": best_ba, "macro_f1": best_ba - 0.1},
+                                    "val_metrics": {"balanced_accuracy": selected_ba},
+                                }
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+            history = dashboard.build_rsvp_ship_image_history(root)
+
+        self.assertTrue(history["available"])
+        self.assertEqual(history["run_count"], 3)
+        self.assertEqual([item["run_id"] for item in history["sota_points"]], ["run-001", "run-002"])
+        self.assertEqual(history["latest_run_id"], "run-003")
+        self.assertAlmostEqual(history["best_test_balanced_accuracy"], 0.80)
+        self.assertEqual(history["best_test_model_family"], "hog")
+
+    def test_rsvp_summary_labels_selected_best_and_human_candidate_fields(self) -> None:
+        payload = {
+            "run_id": "run-001",
+            "created_at": "2026-05-10T01:00:00Z",
+            "program_id": "rsvp_ship_image_only_v0",
+            "dataset_name": "Downloads/RSVP跨模态数据",
+            "status": "completed_image_only",
+            "primary_metric": "test_balanced_accuracy",
+            "selected_model": {
+                "model_family": "image_threshold_calibration_sweep",
+                "model_backend": "numpy_weighted_logistic_regression",
+                "config": {"feature_family": "grayscale_pixels_16x16_validation_threshold"},
+            },
+            "test_metrics": {"balanced_accuracy": 0.8472, "macro_f1": 0.8081, "confusion_matrix": [[36, 7], [2, 12]]},
+            "candidates": [
+                {
+                    "model_family": "image_lbp_texture_baseline",
+                    "model_backend": "numpy_weighted_logistic_regression",
+                    "config": {"feature_family": "lbp_texture_16bins"},
+                    "val_metrics": {"balanced_accuracy": 0.8432},
+                    "test_metrics": {"balanced_accuracy": 0.9767, "macro_f1": 0.9548, "confusion_matrix": [[41, 2], [0, 14]]},
+                },
+                {
+                    "model_family": "image_structure_fusion_logistic",
+                    "model_backend": "numpy_weighted_logistic_regression",
+                    "config": {"feature_family": "fusion_lbp_hog_color_projection_edge"},
+                    "val_metrics": {"balanced_accuracy": 0.9},
+                    "test_metrics": {"balanced_accuracy": 0.93, "macro_f1": 0.91, "confusion_matrix": [[38, 5], [1, 13]]},
+                },
+                {
+                    "model_family": "image_threshold_calibration_sweep",
+                    "model_backend": "numpy_weighted_logistic_regression",
+                    "config": {"feature_family": "grayscale_pixels_16x16_validation_threshold"},
+                    "val_metrics": {"balanced_accuracy": 0.9439},
+                    "test_metrics": {"balanced_accuracy": 0.8472, "macro_f1": 0.8081, "confusion_matrix": [[36, 7], [2, 12]]},
+                },
+            ],
+        }
+
+        summary = dashboard.build_rsvp_ship_image_summary(payload, history={"available": True, "run_count": 1})
+
+        self.assertEqual(summary["score_story"]["selected_test_balanced_accuracy"], 0.8472)
+        self.assertEqual(summary["score_story"]["per_run_best_test_balanced_accuracy"], 0.9767)
+        self.assertEqual(summary["score_story"]["robust_accepted_best"], None)
+        self.assertEqual(summary["top_candidates"][0]["algorithm_label"], "LBP 纹理基线")
+        self.assertEqual(summary["top_candidates"][0]["signal_label"], "局部纹理模式")
+        self.assertEqual(summary["top_candidates"][0]["ship_misses"], 0)
+        self.assertEqual(summary["top_candidates"][0]["nonship_false_alarms"], 2)
+        self.assertIn("需多划分复核", summary["top_candidates"][0]["risk_label"])
+        fusion = next(item for item in summary["top_candidates"] if item["model_family"] == "image_structure_fusion_logistic")
+        self.assertEqual(fusion["algorithm_label"], "多特征结构融合")
+        self.assertEqual(fusion["signal_label"], "纹理、边缘、颜色和轮廓融合")
+        selected = next(item for item in summary["top_candidates"] if item["selected"])
+        self.assertIn("验证集过拟合", selected["risk_label"])
+
+    def test_rsvp_summary_prefers_latest_research_loop_result_for_candidates(self) -> None:
+        old_payload = {
+            "run_id": "old-run",
+            "created_at": "2026-05-10T01:00:00Z",
+            "program_id": "rsvp_ship_image_only_v0",
+            "dataset_name": "Downloads/RSVP跨模态数据",
+            "status": "completed_image_only",
+            "selected_model": {"model_family": "image_lbp_texture_baseline", "model_backend": "numpy_weighted_logistic_regression", "config": {"feature_family": "lbp_texture_16bins"}},
+            "test_metrics": {"balanced_accuracy": 0.8, "macro_f1": 0.8, "confusion_matrix": [[30, 10], [3, 11]]},
+            "candidates": [
+                {
+                    "model_family": "image_lbp_texture_baseline",
+                    "model_backend": "numpy_weighted_logistic_regression",
+                    "config": {"feature_family": "lbp_texture_16bins"},
+                    "val_metrics": {"balanced_accuracy": 0.84},
+                    "test_metrics": {"balanced_accuracy": 0.88, "macro_f1": 0.86, "confusion_matrix": [[40, 3], [2, 12]]},
+                }
+            ],
+        }
+        loop_result = {
+            **old_payload,
+            "run_id": "structure-run",
+            "selected_model": {
+                "model_family": "image_structure_fusion_logistic",
+                "model_backend": "numpy_weighted_logistic_regression",
+                "config": {"feature_family": "fusion_lbp_hog_color_projection_edge", "structure_change": "feature_fusion"},
+            },
+            "test_metrics": {"balanced_accuracy": 0.9767, "macro_f1": 0.95, "confusion_matrix": [[41, 2], [0, 14]]},
+            "candidates": [
+                {
+                    "model_family": "image_structure_fusion_logistic",
+                    "model_backend": "numpy_weighted_logistic_regression",
+                    "config": {"feature_family": "fusion_lbp_hog_color_projection_edge", "structure_change": "feature_fusion"},
+                    "val_metrics": {"balanced_accuracy": 0.9659},
+                    "test_metrics": {"balanced_accuracy": 0.9767, "macro_f1": 0.95, "confusion_matrix": [[41, 2], [0, 14]]},
+                }
+            ],
+        }
+
+        summary = dashboard.build_rsvp_ship_image_summary(
+            old_payload,
+            history={"available": True, "run_count": 1},
+            research_loop={"available": True, "last_ledger": {"result": {"latest_result": loop_result}}},
+        )
+
+        self.assertEqual(summary["run_id"], "structure-run")
+        self.assertEqual(summary["selected_model_family"], "image_structure_fusion_logistic")
+        self.assertEqual(summary["top_candidates"][0]["algorithm_label"], "多特征结构融合")
+
+    def test_build_active_dashboard_task_prefers_rsvp_ship_image_without_mixing_legacy(self) -> None:
+        summary = {
+            "available": True,
+            "run_id": "image-run",
+            "created_at_local": "2026-05-10 23:22",
+            "program_id": "rsvp_ship_image_only_v0",
+            "dataset_name": "Downloads/RSVP跨模态数据",
+            "status": "completed_image_only",
+            "selected_model_family": "image_threshold_calibration_sweep",
+            "best_test_model_family": "image_lbp_texture_baseline",
+            "best_test_balanced_accuracy": 0.9767,
+            "test_balanced_accuracy": 0.8472,
+            "candidate_count": 17,
+            "top_candidates": [
+                {
+                    "model_family": "image_lbp_texture_baseline",
+                    "feature_family": "lbp_texture_16bins",
+                    "test_balanced_accuracy": 0.9767,
+                }
+            ],
+            "director_plan": {"track_count": 12},
+            "history": {"available": True, "run_count": 6, "sota_points": [{"run_id": "image-run"}]},
+        }
+
+        task = dashboard.build_active_dashboard_task(summary)
+
+        self.assertIsNotNone(task)
+        assert task is not None
+        self.assertEqual(task["task_id"], "rsvp_ship_image_only_v0")
+        self.assertEqual(task["mode_label"], "新任务")
+        self.assertEqual(task["dataset_label"], "Downloads/RSVP跨模态数据")
+        self.assertFalse(task["isolation"]["mixes_with_legacy_metrics"])
+        self.assertEqual(task["history_config"]["kind"], "rsvp_image_sota")
+
+    def test_build_dashboard_task_registry_lists_current_and_legacy_tasks(self) -> None:
+        registry = dashboard.build_dashboard_task_registry(
+            {
+                "available": True,
+                "task_id": "rsvp_ship_image_only_v0",
+                "title": "RSVP 纯图像船只二分类",
+                "kind": "image_binary_classification",
+                "stage_label": "completed_image_only",
+                "effect_label": "test BA 0.9767",
+                "updated_at_local": "2026-05-10 23:22",
+                "history_config": {"kind": "rsvp_image_sota", "run_count": 6},
+            },
+            operator_summary={"dataset_label": "旧脑电主线", "stage_label": "done", "effect_label": "r 0.7341"},
+            progress={"campaign_id": "legacy-campaign"},
+            legacy_campaign={"campaign_id": "legacy-campaign"},
+        )
+
+        self.assertEqual(registry["default_task_id"], "rsvp_ship_image_only_v0")
+        self.assertEqual([item["task_id"] for item in registry["tasks"]], ["rsvp_ship_image_only_v0", "legacy_bci_mainline"])
+        self.assertTrue(registry["tasks"][1]["is_legacy"])
+        self.assertEqual(registry["tasks"][0]["history_config"]["kind"], "rsvp_image_sota")
+        self.assertEqual(registry["tasks"][1]["history_config"]["kind"], "legacy_bci_mainline")
+
+    def test_dashboard_index_switches_all_task_scoped_panels_and_draws_rsvp_sota(self) -> None:
+        html = Path("/Users/mac/Code/AutoBci/dashboard/index.html").read_text()
+
+        self.assertIn('id="legacy-sota-panel"', html)
+        self.assertIn('id="legacy-mainline-history-panel"', html)
+        self.assertIn('id="rsvp-sota-trajectory"', html)
+        self.assertIn("syncTaskScopedPanels", html)
+        self.assertIn("renderRsvpSotaTrajectory", html)
+        self.assertIn("[hidden] { display: none !important; }", html)
+        self.assertIn('<div class="mission-full-width" data-task-scope="legacy"', html)
+        self.assertIn("候选算法效果图", html)
+        self.assertIn("fixed sweep archive", html)
+        self.assertIn("研究闭环审计台", html)
+        self.assertIn("研究方向、执行沙盒和研究记录", html)
+        self.assertIn("RSVP research ledger timeline", html)
+        self.assertNotIn("Director / Executor / Research Memory 的真实交互历史。", html)
+        self.assertIn("灰点=验证集，绿点=测试集", html)
+        self.assertIn('window.location.protocol === "file:"', html)
+        self.assertIn('window.location.replace(liveUrl)', html)
+
     def test_dashboard_index_point_legend_explains_formal_and_smoke_points(self) -> None:
         html = Path("/Users/mac/Code/AutoBci/dashboard/index.html").read_text()
 
-        self.assertIn("大圆</strong>代表 formal 刷新 SOTA", html)
-        self.assertIn("小灰圆</strong>代表 formal 未留用", html)
-        self.assertIn("小灰菱形</strong>代表 smoke 尝试", html)
+        self.assertIn("大圆</strong>代表当前最高的 formal SOTA", html)
+        self.assertIn("四角星</strong>代表历史 SOTA 节点", html)
+        self.assertIn("灰蓝圆点</strong>代表 formal 尝试", html)
+        self.assertIn("赭色菱形</strong>代表 smoke 尝试", html)
 
     def test_dashboard_index_keeps_primary_curve_slot_without_rmse_panel(self) -> None:
         html = Path("/Users/mac/Code/AutoBci/dashboard/index.html").read_text()
@@ -245,13 +552,144 @@ class DashboardStatusTests(unittest.TestCase):
         self.assertIn("window.currentSotaRange = 'all';", html)
         self.assertIn("window.currentSotaSourceFilter = 'all';", html)
 
+    def test_dashboard_index_declares_global_mainline_semantics_for_all_time_ranges(self) -> None:
+        html = Path("/Users/mac/Code/AutoBci/dashboard/index.html").read_text()
+
+        self.assertIn("绿色线始终表示全历史真正刷新的主线", html)
+        self.assertIn("时间范围只裁剪当前可见窗口", html)
+
+    def test_dashboard_index_uses_running_best_as_single_mainline_envelope(self) -> None:
+        html = Path("/Users/mac/Code/AutoBci/dashboard/index.html").read_text()
+
+        self.assertIn("const envelopePoints = [...running]", html)
+        self.assertIn("const globalBestIds = new Set(envelopePoints.map((point) => point.run_id));", html)
+        self.assertIn("const latestFormalBestRunId = [...envelopePoints].reverse().find((point) => !point.is_smoke)?.run_id", html)
+        self.assertIn("const allAttempts = [", html)
+        self.assertIn("...referenceSeries.flatMap((series) => Array.isArray(series?.points) ? series.points : []),", html)
+        self.assertNotIn("${renderChartSeries(referenceSeries, scale, left, top, innerWidth, innerHeight, \"reference\")}", html)
+        self.assertIn('buildLinePath(envelopePoints, scale, left, top, innerWidth, innerHeight)', html)
+        self.assertIn("is_latest_running_best: point.run_id === latestFormalBestRunId", html)
+
+    def test_build_reference_progress_plot_only_keeps_true_breakthroughs_in_running_best(self) -> None:
+        rows = [
+            {
+                "run_id": "run-a",
+                "recorded_at": "2026-04-10T00:00:00Z",
+                "comparison_group": "gait_phase_eeg",
+                "comparison_group_label": "步态二分类",
+                "final_metrics": {"val_primary_metric": 0.41},
+            },
+            {
+                "run_id": "run-b",
+                "recorded_at": "2026-04-11T00:00:00Z",
+                "comparison_group": "gait_phase_eeg",
+                "comparison_group_label": "步态二分类",
+                "final_metrics": {"val_primary_metric": 0.41},
+            },
+            {
+                "run_id": "run-c",
+                "recorded_at": "2026-04-12T00:00:00Z",
+                "comparison_group": "gait_phase_eeg",
+                "comparison_group_label": "步态二分类",
+                "final_metrics": {"val_primary_metric": 0.56},
+            },
+            {
+                "run_id": "run-d",
+                "recorded_at": "2026-04-13T00:00:00Z",
+                "comparison_group": "gait_phase_eeg",
+                "comparison_group_label": "步态二分类",
+                "final_metrics": {"val_primary_metric": 0.56},
+            },
+        ]
+
+        payload = build_reference_progress_plot(
+            rows,
+            metric_name="val_primary_metric",
+            digits=4,
+            higher_is_better=True,
+        )
+
+        self.assertEqual([point["run_id"] for point in payload["running_best"]], ["run-a", "run-c"])
+
+    def test_build_reference_progress_plot_keeps_single_global_sota_line_across_task_types(self) -> None:
+        rows = [
+            {
+                "run_id": "run-brain-classification",
+                "recorded_at": "2026-04-08T00:00:00Z",
+                "comparison_group": "gait_phase_eeg",
+                "comparison_group_label": "步态二分类",
+                "track_id": "gait_phase_eeg_feature_tcn",
+                "final_metrics": {"val_primary_metric": 0.0580},
+            },
+            {
+                "run_id": "run-xyz",
+                "recorded_at": "2026-04-10T00:00:00Z",
+                "comparison_group": "structure_reference",
+                "comparison_group_label": "相对 RSCA 三方向坐标",
+                "track_id": "relative_origin_xyz_feature_lstm",
+                "final_metrics": {"val_primary_metric": 0.4211},
+            },
+            {
+                "run_id": "run-joints",
+                "recorded_at": "2026-04-12T00:00:00Z",
+                "comparison_group": "legacy_continuous_mainline",
+                "comparison_group_label": "旧连续预测",
+                "track_id": "stagec_xgboost_256",
+                "final_metrics": {"val_primary_metric": 0.8367},
+            },
+        ]
+
+        payload = build_reference_progress_plot(
+            rows,
+            metric_name="val_primary_metric",
+            digits=4,
+            higher_is_better=True,
+        )
+
+        self.assertEqual(
+            [point["run_id"] for point in payload["running_best"]],
+            ["run-brain-classification", "run-xyz", "run-joints"],
+        )
+
+    def test_dashboard_index_places_current_image_task_before_legacy_sections(self) -> None:
+        html = Path("/Users/mac/Code/AutoBci/dashboard/index.html").read_text()
+
+        self.assertLess(
+            html.index("当前任务：RSVP 纯图像船只二分类"),
+            html.index("旧脑电主线指标演进 Legacy BCI SOTA"),
+        )
+        self.assertLess(
+            html.index("旧脑电主线指标演进 Legacy BCI SOTA"),
+            html.index('id="mission-control-shell"'),
+        )
+
+    def test_dashboard_index_uses_stronger_neutral_point_colors(self) -> None:
+        html = Path("/Users/mac/Code/AutoBci/dashboard/index.html").read_text()
+
+        self.assertIn('discarded: "rgba(145, 160, 176, 0.72)"', html)
+        self.assertIn('discardedStroke: "rgba(116, 132, 149, 0.96)"', html)
+        self.assertIn('smoke: "rgba(180, 137, 90, 0.62)"', html)
+        self.assertIn('smokeStroke: "rgba(158, 111, 60, 0.94)"', html)
+        self.assertIn('.map(point => renderChartPointGlyph(point, scale, left, top, innerWidth, innerHeight, "legacy", "rgba(116, 132, 149, 0.96)"))', html)
+
+    def test_dashboard_index_softens_plot_background_and_strengthens_point_glyphs(self) -> None:
+        html = Path("/Users/mac/Code/AutoBci/dashboard/index.html").read_text()
+
+        self.assertIn("--plot-surface: rgba(255, 249, 241, 0.34);", html)
+        self.assertIn("--plot-surface-2: rgba(223, 214, 197, 0.16);", html)
+        self.assertIn("--plot-grid: rgba(117, 91, 0, 0.032);", html)
+        self.assertIn('buildFourPointStarPoints', html)
+        self.assertIn('stroke-dasharray="4 4"', html)
+        self.assertIn('--green: #5a8f79;', html)
+        self.assertIn('--green-line: #7ea494;', html)
+
     def test_dashboard_index_declares_current_campaign_and_history_benchmark_panels(self) -> None:
         html = Path("/Users/mac/Code/AutoBci/dashboard/index.html").read_text()
 
         self.assertIn('id="current-campaign-benchmark-panel"', html)
         self.assertIn('id="current-campaign-benchmark"', html)
-        self.assertIn("当前研究轮次 Current Campaign", html)
-        self.assertIn("历史调度基准 Framework Benchmark", html)
+        self.assertIn("旧脑电 AutoResearch 轮次 Legacy Campaign", html)
+        self.assertIn("旧框架历史调度基准 Legacy Framework Benchmark", html)
         self.assertIn("renderCurrentCampaignBenchmark", html)
 
     def test_dashboard_index_declares_family_best_and_three_method_sections(self) -> None:
@@ -2240,8 +2678,8 @@ class DashboardStatusTests(unittest.TestCase):
         algorithm_series = mainline["plots"]["primary"]["algorithm_series"]
         reference_series = mainline["plots"]["primary"]["reference_series"]
 
-        self.assertEqual(points[0]["comparison_group"], "gait_phase_eeg")
-        self.assertEqual(points[0]["visual_role"], "focus_point")
+        self.assertEqual(points[0]["comparison_group"], "legacy_continuous_mainline")
+        self.assertEqual(points[0]["visual_role"], "legacy_line")
 
         feature_tcn_series = [
             series for series in algorithm_series
@@ -2851,7 +3289,7 @@ class DashboardStatusTests(unittest.TestCase):
         self.assertEqual(payload["recent_control_events"][0]["action"], "execute")
         self.assertEqual(
             [item["role"] for item in payload["interaction_history"][:4]],
-            ["Executor", "Director", "Director", "Research Memory"],
+            ["执行沙盒", "结果复核", "方向选择", "研究记录"],
         )
         self.assertEqual(payload["interaction_history"][0]["title"], "执行队列动作")
         self.assertIn("feature_gru_mainline", payload["interaction_history"][0]["detail"])
@@ -2972,9 +3410,9 @@ class DashboardStatusTests(unittest.TestCase):
         self.assertIn("queue_unchanged", payload["topic_observability"][1]["chips"])
         self.assertIn("interaction_history", payload)
         self.assertGreaterEqual(len(payload["interaction_history"]), 4)
-        self.assertEqual(payload["interaction_history"][0]["role"], "Research Memory")
-        self.assertEqual(payload["interaction_history"][1]["role"], "Director")
-        self.assertEqual(payload["interaction_history"][-1]["role"], "Executor")
+        self.assertEqual(payload["interaction_history"][0]["role"], "研究记录")
+        self.assertEqual(payload["interaction_history"][1]["role"], "结果复核")
+        self.assertEqual(payload["interaction_history"][-1]["role"], "执行沙盒")
 
     def test_build_mission_control_payload_surfaces_automation_state_and_recommended_incubation(self) -> None:
         snapshot = {
@@ -3043,9 +3481,9 @@ class DashboardStatusTests(unittest.TestCase):
             payload["active_incubation_campaigns"][0]["campaign_id"],
             "mission-001-incubation-feature-cnn-lstm",
         )
-        self.assertEqual(payload["interaction_history"][0]["role"], "Director")
+        self.assertEqual(payload["interaction_history"][0]["role"], "方向选择")
         self.assertIn("feature_gru_mainline", payload["interaction_history"][0]["result"])
-        self.assertEqual(payload["interaction_history"][-1]["role"], "Executor")
+        self.assertEqual(payload["interaction_history"][-1]["role"], "执行沙盒")
         self.assertIn("exploration", payload["interaction_history"][-1]["result"])
         self.assertEqual(payload["pipeline_status"]["stages"][2]["summary"], "主线已停滞，转去自动孵化 CNN-LSTM 探针。")
         self.assertEqual(payload["pipeline_status"]["stages"][3]["count"], 1)

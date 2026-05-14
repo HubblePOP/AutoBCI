@@ -26,6 +26,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from bci_autoresearch.control_plane import build_status_snapshot
+from bci_autoresearch.control_plane.research_loop import status_research_loop
 from bci_autoresearch.eval.metrics import summarize_per_dim_rows
 
 # Benchmark metrics (lazy import to avoid circular deps)
@@ -55,6 +56,10 @@ RESEARCH_EVIDENCE_PATH = MONITOR_DIR / "research_evidence.jsonl"
 JUDGMENT_UPDATES_PATH = MONITOR_DIR / "judgment_updates.jsonl"
 PREDICTION_PREVIEW_PATH = MONITOR_DIR / "current_prediction_preview.json"
 AUTORESEARCH_STATUS_PATH = MONITOR_DIR / "autoresearch_status.json"
+RSVP_SHIP_IMAGE_LATEST_PATH = MONITOR_DIR / "rsvp_ship_image_autoresearch_latest.json"
+RSVP_SHIP_IMAGE_DIRECTOR_PLAN_PATH = MONITOR_DIR / "director_plans" / "codex-assisted-rsvp-ship-image-20260510.json"
+RSVP_SHIP_IMAGE_OVERNIGHT_STATUS_PATH = MONITOR_DIR / "overnight" / "rsvp_ship_image_overnight_status.json"
+RSVP_SHIP_IMAGE_OUTPUT_DIR = ARTIFACTS_DIR / "rsvp_ship_image_autoresearch"
 AUTOBCI_REMOTE_RUNTIME_PATH = MONITOR_DIR / "autobci_remote_runtime.json"
 PROCESS_REGISTRY_PATH = MONITOR_DIR / "process_registry.json"
 MISSION_PROCESS_REGISTRY_PATH = MONITOR_DIR / "mission_process_registry.json"
@@ -2131,6 +2136,7 @@ def build_reference_progress_plot(
     metric_name: str,
     digits: int,
     higher_is_better: bool,
+    exclude_smoke_from_running_best: bool = False,
     overlay_rows: list[dict[str, Any]] | None = None,
     model_rows: list[dict[str, Any]] | None = None,
     axis: dict[str, Any] | None = None,
@@ -2145,8 +2151,18 @@ def build_reference_progress_plot(
         value = resolve_progress_metric_value(row, metric_name)
         if value is None:
             continue
+        candidate_point = build_chart_point_payload(
+            row,
+            value=value,
+            digits=digits,
+            axis=axis_payload,
+            is_running_best=False,
+        )
+        exclude_from_envelope = exclude_smoke_from_running_best and bool(candidate_point.get("is_smoke"))
 
-        if running_best_value is None:
+        if exclude_from_envelope:
+            is_running_best = False
+        elif running_best_value is None:
             is_running_best = True
             running_best_value = value
         elif higher_is_better:
@@ -2165,20 +2181,15 @@ def build_reference_progress_plot(
         )
         point["attempt_idx"] = len(points) + 1
         points.append(point)
-        step_points.append(
-            {
-                "attempt_idx": point["attempt_idx"],
-                "run_id": point["run_id"],
-                "recorded_at": point["recorded_at"],
-                "recorded_at_local": point["recorded_at_local"],
-                "value": running_best_value,
-                "value_label": format_metric_label(running_best_value, digits),
-                "x_pct": point["x_pct"],
-                "comparison_group": point["comparison_group"],
-                "comparison_group_label": point["comparison_group_label"],
-                "visual_role": point["visual_role"],
-            }
-        )
+        if is_running_best:
+            step_points.append(
+                {
+                    **point,
+                    "value": running_best_value,
+                    "value_label": format_metric_label(running_best_value, digits),
+                    "is_running_best": True,
+                }
+            )
 
     return {
         "total_points": len(points),
@@ -4373,6 +4384,10 @@ def build_mainline_progress(
         row for row in progress_rows
         if not bool(row.get("is_synthetic_anchor"))
     ]
+    promotable_rows = [
+        row for row in model_rows
+        if infer_series_class(row) == "mainline_brain"
+    ]
     ordered_rows = sort_progress_rows(mainline_rows)
     latest_row = latest_progress_row(ordered_rows)
     axis_source_rows = ordered_rows
@@ -4382,6 +4397,8 @@ def build_mainline_progress(
         axis_source_rows = sort_progress_rows([*ordered_rows, *branch_rows])
     time_domain = build_progress_time_domain(axis_source_rows or ordered_rows)
     shared_axis = build_day_bucket_axis(axis_source_rows or ordered_rows)
+    global_history_rows = sort_progress_rows(model_rows)
+    global_history_axis = build_day_bucket_axis(global_history_rows or axis_source_rows or ordered_rows)
     metric_series = summarize_group_metric_series(ordered_rows)
     rmse_available_points = len([row for row in ordered_rows if finite_or_none(((row.get("metrics") or {}) if isinstance(row.get("metrics"), dict) else {}).get("val_rmse")) is not None])
     rmse_missing_points = max(len(ordered_rows) - rmse_available_points, 0)
@@ -4429,13 +4446,14 @@ def build_mainline_progress(
         },
         "plots": {
             "primary": build_reference_progress_plot(
-                ordered_rows,
+                promotable_rows,
                 metric_name="val_primary_metric" if use_primary_metric_curve else "val_zero_lag_cc",
                 digits=4,
                 higher_is_better=True,
+                exclude_smoke_from_running_best=True,
                 overlay_rows=branch_rows,
                 model_rows=model_rows,
-                axis=shared_axis,
+                axis=global_history_axis,
             ),
             "val_rmse": build_reference_progress_plot(
                 ordered_rows,
@@ -5608,6 +5626,481 @@ def build_current_campaign_benchmark(
     }
 
 
+def _ship_image_metric(metrics: dict[str, Any] | None, key: str) -> float | None:
+    if not isinstance(metrics, dict):
+        return None
+    return finite_or_none(metrics.get(key))
+
+
+def _best_rsvp_ship_image_candidate(result: dict[str, Any]) -> dict[str, Any]:
+    candidates = [item for item in (result.get("candidates") if isinstance(result.get("candidates"), list) else []) if isinstance(item, dict)]
+    best_candidate: dict[str, Any] = {}
+    best_score: float | None = None
+    for candidate in candidates:
+        metrics = candidate.get("test_metrics") if isinstance(candidate.get("test_metrics"), dict) else {}
+        score = _ship_image_metric(metrics, "balanced_accuracy")
+        if score is None:
+            continue
+        if best_score is None or score > best_score:
+            best_score = score
+            best_candidate = candidate
+    if best_candidate:
+        return best_candidate
+    return result
+
+
+def _rsvp_ship_image_history_row(result: dict[str, Any]) -> dict[str, Any]:
+    best_candidate = _best_rsvp_ship_image_candidate(result)
+    best_config = best_candidate.get("config") if isinstance(best_candidate.get("config"), dict) else {}
+    best_metrics = best_candidate.get("test_metrics") if isinstance(best_candidate.get("test_metrics"), dict) else {}
+    selected = result.get("selected_model") if isinstance(result.get("selected_model"), dict) else {}
+    selected_config = selected.get("config") if isinstance(selected.get("config"), dict) else {}
+    selected_metrics = result.get("test_metrics") if isinstance(result.get("test_metrics"), dict) else {}
+    created_at = as_text_or_none(result.get("created_at")) or ""
+    return {
+        "run_id": as_text_or_none(result.get("run_id")) or "-",
+        "created_at": created_at,
+        "created_at_local": format_local_timestamp(created_at),
+        "status": as_text_or_none(result.get("status")) or "-",
+        "candidate_count": len(result.get("candidates") or []) if isinstance(result.get("candidates"), list) else 0,
+        "selected_model_family": as_text_or_none(selected.get("model_family")) or "-",
+        "selected_feature": as_text_or_none(selected_config.get("feature_family")) or "-",
+        "selected_test_balanced_accuracy": _ship_image_metric(selected_metrics, "balanced_accuracy"),
+        "best_test_model_family": as_text_or_none(best_candidate.get("model_family")) or "-",
+        "best_test_feature": as_text_or_none(best_config.get("feature_family")) or "-",
+        "best_test_balanced_accuracy": _ship_image_metric(best_metrics, "balanced_accuracy"),
+        "best_test_macro_f1": _ship_image_metric(best_metrics, "macro_f1"),
+    }
+
+
+def build_rsvp_ship_image_history(output_dir: Path = RSVP_SHIP_IMAGE_OUTPUT_DIR) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    if output_dir.exists():
+        for path in sorted(output_dir.glob("*/image_result.json")):
+            result = read_json(path)
+            if not isinstance(result, dict):
+                continue
+            row = _rsvp_ship_image_history_row(result)
+            run_id = as_text_or_none(row.get("run_id")) or str(path.parent)
+            if run_id in seen:
+                continue
+            seen.add(run_id)
+            row["artifact_path"] = str(path)
+            rows.append(row)
+
+    rows.sort(key=lambda item: (parse_timestamp(item.get("created_at")) or datetime.min.replace(tzinfo=timezone.utc), str(item.get("run_id"))))
+    running_best: float | None = None
+    sota_points: list[dict[str, Any]] = []
+    best_row: dict[str, Any] | None = None
+    for index, row in enumerate(rows, start=1):
+        score = finite_or_none(row.get("best_test_balanced_accuracy"))
+        if score is None:
+            row["sota_so_far"] = running_best
+            continue
+        if running_best is None or score > running_best:
+            running_best = score
+            best_row = row
+            point = {**row, "history_index": index, "sota_so_far": running_best}
+            sota_points.append(point)
+        row["sota_so_far"] = running_best
+
+    recent_runs = rows[-80:]
+    return {
+        "available": bool(rows),
+        "kind": "rsvp_image_sota",
+        "source_dir": str(output_dir),
+        "run_count": len(rows),
+        "latest_run_id": as_text_or_none(rows[-1].get("run_id")) if rows else None,
+        "latest_created_at": as_text_or_none(rows[-1].get("created_at")) if rows else None,
+        "latest_created_at_local": as_text_or_none(rows[-1].get("created_at_local")) if rows else None,
+        "best_run_id": as_text_or_none((best_row or {}).get("run_id")) if best_row else None,
+        "best_test_balanced_accuracy": finite_or_none((best_row or {}).get("best_test_balanced_accuracy")) if best_row else None,
+        "best_test_model_family": as_text_or_none((best_row or {}).get("best_test_model_family")) if best_row else None,
+        "runs": recent_runs,
+        "sota_points": sota_points,
+    }
+
+
+def build_rsvp_ship_image_summary(
+    result: dict[str, Any] | None,
+    *,
+    director_plan: dict[str, Any] | None = None,
+    overnight_status: dict[str, Any] | None = None,
+    history: dict[str, Any] | None = None,
+    research_loop: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if not isinstance(result, dict):
+        return {"available": False}
+
+    loop_status = research_loop if isinstance(research_loop, dict) else {}
+    loop_result = (
+        ((loop_status.get("last_ledger") or {}).get("result") or {}).get("latest_result")
+        if isinstance(loop_status.get("last_ledger"), dict)
+        else None
+    )
+    display_result = loop_result if isinstance(loop_result, dict) and loop_result.get("candidates") else result
+
+    selected = display_result.get("selected_model") if isinstance(display_result.get("selected_model"), dict) else {}
+    selected_config = selected.get("config") if isinstance(selected.get("config"), dict) else {}
+    selected_model_family = as_text_or_none(selected.get("model_family")) or "-"
+    selected_backend = as_text_or_none(selected.get("model_backend")) or "-"
+    candidates = [item for item in (display_result.get("candidates") if isinstance(display_result.get("candidates"), list) else []) if isinstance(item, dict)]
+
+    def algorithm_label(model_family: str) -> str:
+        labels = {
+            "majority_baseline": "多数类底线",
+            "image_tiny_pixel_logistic": "8x8 灰度像素线性模型",
+            "image_logistic_baseline": "灰度像素线性基线",
+            "image_mid_pixel_logistic": "24x24 灰度像素线性模型",
+            "image_threshold_calibration_sweep": "验证集阈值校准",
+            "image_color_histogram_logistic": "颜色直方图线性模型",
+            "image_edge_hog_linear_probe": "HOG 边缘方向探针",
+            "image_lbp_texture_baseline": "LBP 纹理基线",
+            "image_projection_profile_logistic": "投影轮廓线性模型",
+            "image_edge_density_logistic": "边缘密度线性模型",
+            "image_structure_fusion_logistic": "多特征结构融合",
+            "image_ridge_pixel_classifier": "Ridge 像素分类器",
+            "image_gaussian_nb_color_histogram": "颜色直方图朴素贝叶斯",
+            "image_nearest_centroid_hog": "HOG 最近中心分类器",
+            "image_knn3_pixel_classifier": "KNN 像素近邻",
+            "image_knn5_texture_classifier": "KNN 纹理近邻",
+        }
+        return labels.get(model_family, model_family or "-")
+
+    def signal_label(feature_family: str) -> str:
+        if "lbp_texture" in feature_family:
+            return "局部纹理模式"
+        if "rgb_hsv_histogram" in feature_family:
+            return "整体颜色和亮度分布"
+        if "gradient_hog" in feature_family:
+            return "边缘方向和轮廓"
+        if "edge_density" in feature_family:
+            return "边缘密度"
+        if "fusion_lbp_hog_color_projection_edge" in feature_family:
+            return "纹理、边缘、颜色和轮廓融合"
+        if "projection_profile" in feature_family:
+            return "水平/垂直投影轮廓"
+        if "grayscale_pixels" in feature_family:
+            return "低分辨率灰度形状"
+        if feature_family == "none":
+            return "不看图像，永远猜多数类"
+        return feature_family or "-"
+
+    def confusion_counts(metrics: dict[str, Any]) -> tuple[int | None, int | None]:
+        matrix = metrics.get("confusion_matrix")
+        if not (isinstance(matrix, list) and len(matrix) >= 2):
+            return None, None
+        if not all(isinstance(row, list) and len(row) >= 2 for row in matrix[:2]):
+            return None, None
+        nonship_false_alarms = int(matrix[0][1])
+        ship_misses = int(matrix[1][0])
+        return ship_misses, nonship_false_alarms
+
+    def risk_label(model_family: str, feature_family: str, val_ba: float | None, test_ba: float | None, is_selected: bool) -> str:
+        if model_family == "majority_baseline":
+            return "无识别能力，只是底线。"
+        if "threshold_calibration" in model_family or is_selected and val_ba is not None and test_ba is not None and val_ba - test_ba > 0.05:
+            return "验证集过拟合风险，需要校准诊断。"
+        if "lbp_texture" in feature_family:
+            return "测试分高但验证分偏低，需多划分复核。"
+        if "rgb_hsv_histogram" in feature_family:
+            return "可能吃到背景、亮度或颜色捷径。"
+        if "fusion_lbp_hog_color_projection_edge" in feature_family:
+            return "结构已改变，但融合特征仍需拆开看是否混入颜色捷径。"
+        if "knn" in model_family:
+            return "可能记忆近邻样本，需要近重复审计。"
+        return "需看多划分稳定性。"
+
+    def candidate_row(item: dict[str, Any]) -> dict[str, Any]:
+        config = item.get("config") if isinstance(item.get("config"), dict) else {}
+        val_metrics = item.get("val_metrics") if isinstance(item.get("val_metrics"), dict) else {}
+        test_metrics = item.get("test_metrics") if isinstance(item.get("test_metrics"), dict) else {}
+        model_family = as_text_or_none(item.get("model_family")) or "-"
+        feature_family = as_text_or_none(config.get("feature_family")) or "-"
+        val_ba = _ship_image_metric(val_metrics, "balanced_accuracy")
+        test_ba = _ship_image_metric(test_metrics, "balanced_accuracy")
+        is_selected = (
+            model_family == selected_model_family
+            and as_text_or_none(item.get("model_backend")) == selected_backend
+            and config == selected_config
+        )
+        ship_misses, nonship_false_alarms = confusion_counts(test_metrics)
+        return {
+            "model_family": model_family,
+            "model_backend": as_text_or_none(item.get("model_backend")) or "-",
+            "feature_family": feature_family,
+            "algorithm_label": algorithm_label(model_family),
+            "signal_label": signal_label(feature_family),
+            "classifier": as_text_or_none(config.get("classifier")) or as_text_or_none(item.get("model_backend")) or "-",
+            "val_balanced_accuracy": val_ba,
+            "test_balanced_accuracy": test_ba,
+            "test_macro_f1": _ship_image_metric(test_metrics, "macro_f1"),
+            "confusion_matrix": test_metrics.get("confusion_matrix"),
+            "ship_misses": ship_misses,
+            "nonship_false_alarms": nonship_false_alarms,
+            "decision_threshold": finite_or_none(config.get("decision_threshold")),
+            "selected": is_selected,
+            "risk_label": risk_label(model_family, feature_family, val_ba, test_ba, is_selected),
+        }
+
+    candidate_rows = [candidate_row(item) for item in candidates]
+    candidate_rows.sort(
+        key=lambda item: (
+            item.get("test_balanced_accuracy") if item.get("test_balanced_accuracy") is not None else -1.0,
+            item.get("val_balanced_accuracy") if item.get("val_balanced_accuracy") is not None else -1.0,
+            item.get("selected") is True,
+        ),
+        reverse=True,
+    )
+    best_test_candidate = candidate_rows[0] if candidate_rows else {}
+
+    test_metrics = display_result.get("test_metrics") if isinstance(display_result.get("test_metrics"), dict) else {}
+    val_metrics = display_result.get("val_metrics") if isinstance(display_result.get("val_metrics"), dict) else {}
+    plan_tracks = director_plan.get("tracks") if isinstance(director_plan, dict) and isinstance(director_plan.get("tracks"), list) else []
+    overnight = overnight_status if isinstance(overnight_status, dict) and overnight_status.get("task_id") == "rsvp_ship_image_only_v0" else {}
+    overnight_phase = as_text_or_none(overnight.get("phase")) if overnight else None
+    overnight_cycle = overnight.get("cycle") if overnight else None
+    overnight_total = overnight.get("total_cycles") if overnight else None
+    return {
+        "available": True,
+        "run_id": as_text_or_none(display_result.get("run_id")) or "-",
+        "created_at": as_text_or_none(display_result.get("created_at")) or "-",
+        "created_at_local": format_local_timestamp(display_result.get("created_at")),
+        "program_id": as_text_or_none(display_result.get("program_id")) or "-",
+        "dataset_name": as_text_or_none(display_result.get("dataset_name")) or "-",
+        "status": as_text_or_none(display_result.get("status")) or "-",
+        "target_mode": as_text_or_none(display_result.get("target_mode")) or "-",
+        "primary_metric": as_text_or_none(display_result.get("primary_metric")) or "-",
+        "selected_model_family": selected_model_family,
+        "selected_backend": selected_backend,
+        "selected_feature": as_text_or_none(selected_config.get("feature_family")) or "-",
+        "best_test_model_family": as_text_or_none(best_test_candidate.get("model_family")) or "-",
+        "best_test_feature": as_text_or_none(best_test_candidate.get("feature_family")) or "-",
+        "best_test_balanced_accuracy": _ship_image_metric(best_test_candidate, "test_balanced_accuracy"),
+        "val_balanced_accuracy": _ship_image_metric(val_metrics, "balanced_accuracy"),
+        "test_balanced_accuracy": _ship_image_metric(test_metrics, "balanced_accuracy"),
+        "test_macro_f1": _ship_image_metric(test_metrics, "macro_f1"),
+        "test_confusion_matrix": test_metrics.get("confusion_matrix"),
+        "score_story": {
+            "selected_test_balanced_accuracy": _ship_image_metric(test_metrics, "balanced_accuracy"),
+            "per_run_best_test_balanced_accuracy": _ship_image_metric(best_test_candidate, "test_balanced_accuracy"),
+            "historical_sota_test_balanced_accuracy": finite_or_none((history or {}).get("best_test_balanced_accuracy")) if isinstance(history, dict) else None,
+            "robust_accepted_best": loop_status.get("robust_accepted_best") if isinstance(loop_status.get("robust_accepted_best"), dict) else None,
+            "truth_note": "selected 是系统按验证集真正选中的模型；per-run best 是同一轮测试集事后最高候选；robust accepted best 需要多划分通过。",
+        },
+        "candidate_count": len(candidate_rows),
+        "top_candidates": candidate_rows[:12],
+        "split_summary": display_result.get("split_summary") if isinstance(display_result.get("split_summary"), dict) else {},
+        "audit_summary": display_result.get("audit_summary") if isinstance(display_result.get("audit_summary"), dict) else {},
+        "artifacts": display_result.get("artifacts") if isinstance(display_result.get("artifacts"), dict) else {},
+        "director_plan": {
+            "available": isinstance(director_plan, dict),
+            "plan_id": as_text_or_none((director_plan or {}).get("plan_id")) if isinstance(director_plan, dict) else None,
+            "track_count": len(plan_tracks),
+        },
+        "history": history if isinstance(history, dict) else {"available": False},
+        "research_loop": loop_status if loop_status else {"available": False},
+        "overnight_status": {
+            "available": bool(overnight),
+            "mode": as_text_or_none(overnight.get("mode")) if overnight else None,
+            "phase": overnight_phase,
+            "cycle": overnight_cycle if isinstance(overnight_cycle, int) else None,
+            "total_cycles": overnight_total if isinstance(overnight_total, int) else None,
+            "last_run_id": as_text_or_none(overnight.get("last_run_id")) if overnight else None,
+            "last_exit_code": overnight.get("last_exit_code") if overnight else None,
+            "last_logistic_epochs": overnight.get("last_logistic_epochs") if overnight else None,
+            "updated_at": as_text_or_none(overnight.get("updated_at")) if overnight else None,
+            "updated_at_local": format_local_timestamp(overnight.get("updated_at")) if overnight else None,
+            "truth_note": as_text_or_none(overnight.get("truth_note")) if overnight else None,
+        },
+        "safety": {
+            "no_cross_modal_claim": bool(result.get("no_cross_modal_claim")),
+            "eeg_status": as_text_or_none(result.get("eeg_status")) or "-",
+        },
+    }
+
+
+def build_active_dashboard_task(rsvp_ship_image: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(rsvp_ship_image, dict) or not rsvp_ship_image.get("available"):
+        return None
+
+    best_test = finite_or_none(rsvp_ship_image.get("best_test_balanced_accuracy"))
+    selected_test = finite_or_none(rsvp_ship_image.get("test_balanced_accuracy"))
+    candidate_count = rsvp_ship_image.get("candidate_count")
+    director_plan = rsvp_ship_image.get("director_plan") if isinstance(rsvp_ship_image.get("director_plan"), dict) else {}
+    overnight = rsvp_ship_image.get("overnight_status") if isinstance(rsvp_ship_image.get("overnight_status"), dict) else {}
+    history = rsvp_ship_image.get("history") if isinstance(rsvp_ship_image.get("history"), dict) else {}
+    research_loop = rsvp_ship_image.get("research_loop") if isinstance(rsvp_ship_image.get("research_loop"), dict) else {}
+    active_loop_track = research_loop.get("active_track") if isinstance(research_loop.get("active_track"), dict) else {}
+    track_count = director_plan.get("track_count")
+    best_label = as_text_or_none(rsvp_ship_image.get("best_test_model_family")) or "-"
+    selected_label = as_text_or_none(rsvp_ship_image.get("selected_model_family")) or "-"
+    overnight_phase = as_text_or_none(overnight.get("phase")) or ""
+    overnight_active = overnight_phase in {"starting", "running", "sleeping", "error_sleeping"}
+    overnight_cycle = overnight.get("cycle")
+    overnight_total = overnight.get("total_cycles")
+    stage_label = (
+        f"research-loop {research_loop.get('phase') or 'ready'}"
+        if research_loop.get("available")
+        else
+        f"overnight {overnight_phase} {overnight_cycle}/{overnight_total}"
+        if overnight_active and isinstance(overnight_cycle, int) and isinstance(overnight_total, int)
+        else as_text_or_none(rsvp_ship_image.get("status")) or "-"
+    )
+    summary_bits = [
+        "当前主视图是独立的 RSVP 纯图像 ship/not-ship 二分类任务。",
+        "旧脑电 AutoResearch 主线只作为下方旧任务区保留，不参与本任务指标。",
+    ]
+    if best_test is not None:
+        summary_bits.append(f"测试集最高 balanced accuracy = {best_test:.4f}。")
+    return {
+        "available": True,
+        "task_id": "rsvp_ship_image_only_v0",
+        "mission_id": "rsvp_ship_image_only_v0",
+        "campaign_id": (
+            f"research-loop · {as_text_or_none(active_loop_track.get('track_id'))}"
+            if research_loop.get("available") and as_text_or_none(active_loop_track.get("track_id"))
+            else "research-loop"
+            if research_loop.get("available")
+            else as_text_or_none(rsvp_ship_image.get("run_id")) or "-"
+        ),
+        "active_track_id": as_text_or_none(active_loop_track.get("track_id")) or "image_only_research_loop",
+        "title": "RSVP 纯图像船只二分类",
+        "kind": "image_binary_classification",
+        "mode_label": "新任务",
+        "mode_tone": "ok",
+        "summary": " ".join(summary_bits),
+        "dataset_label": as_text_or_none(rsvp_ship_image.get("dataset_name")) or "-",
+        "method_label": best_label,
+        "stage_label": stage_label,
+        "effect_label": f"test BA {best_test:.4f}" if best_test is not None else "-",
+        "effect_note": (
+            f"测试集事后最高：{best_label}；系统实际选择：{selected_label}"
+            if best_label != "-" or selected_label != "-"
+            else "当前没有候选模型结果。"
+        ),
+        "effect_source_label": "image-only latest artifact",
+        "updated_at_local": as_text_or_none(rsvp_ship_image.get("created_at_local")) or "-",
+        "history_config": {
+            "kind": "rsvp_image_sota",
+            "run_count": history.get("run_count") if isinstance(history.get("run_count"), int) else 0,
+            "source_dir": as_text_or_none(history.get("source_dir")) or str(RSVP_SHIP_IMAGE_OUTPUT_DIR),
+            "primary_metric": "test_balanced_accuracy",
+            "default_panel_scope": "rsvp",
+            "archive_note": "fixed sweep archive; hidden from main chart",
+        },
+        "current_task": "用下载目录 RSVP 图像做 ship / not-ship 二分类，只使用图像，不使用脑电。",
+        "current_problem": (
+            f"研究闭环最近执行：{active_loop_track.get('title') or active_loop_track.get('track_id') or '-'}。"
+            if research_loop.get("available") and active_loop_track
+            else (
+                "固定 sweep 已退役；下一步由 research-loop 按 track 切换方向。"
+                if overnight_phase == "stopped"
+                else "当前需要推进真正的研究方向→执行沙盒→固定评估→判断闸闭环。"
+            )
+        ),
+        "next_step": "运行 research-loop step，优先做多划分稳健复核、校准诊断和背景捷径检查。",
+        "topic_count": 1,
+        "queue_count": int(research_loop.get("queued_count")) if isinstance(research_loop.get("queued_count"), int) else track_count if isinstance(track_count, int) else 0,
+        "judgment_count": candidate_count if isinstance(candidate_count, int) else 0,
+        "recommended_queue": [
+            {
+                "title": as_text_or_none(item.get("model_family")) or "-",
+                "meta": (
+                    f"test BA={float(item['test_balanced_accuracy']):.4f}"
+                    if finite_or_none(item.get("test_balanced_accuracy")) is not None
+                    else "候选模型"
+                ),
+                "chips": [as_text_or_none(item.get("feature_family")) or "image_only"],
+            }
+            for item in (rsvp_ship_image.get("top_candidates") if isinstance(rsvp_ship_image.get("top_candidates"), list) else [])[:5]
+            if isinstance(item, dict)
+        ],
+        "topic_inbox": [
+            {
+                "title": "纯图像船只二分类",
+                "meta": "独立 ProgramMD：rsvp_ship_image_only_v0",
+                "chips": ["image-only", "ship/not-ship"],
+            }
+        ],
+        "session_summary": [
+            {
+                "title": stage_label,
+                "meta": as_text_or_none(overnight.get("last_run_id")) or "overnight 未启动",
+                "chips": ["overnight", as_text_or_none(overnight.get("mode")) or "candidate_sweep"],
+            },
+            {
+                "title": as_text_or_none(rsvp_ship_image.get("run_id")) or "-",
+                "meta": f"候选 {candidate_count or 0} 个，研究方向 {track_count or 0} 条。",
+                "chips": ["latest", "isolated"],
+            }
+        ],
+        "isolation": {
+            "legacy_bci_mainline_is_read_only": True,
+            "raw_data_touched": False,
+            "mixes_with_legacy_metrics": False,
+        },
+    }
+
+
+def build_dashboard_task_registry(
+    active_task: dict[str, Any] | None,
+    *,
+    operator_summary: dict[str, Any] | None,
+    progress: dict[str, Any] | None,
+    legacy_campaign: dict[str, Any] | None,
+) -> dict[str, Any]:
+    tasks: list[dict[str, Any]] = []
+    if isinstance(active_task, dict) and active_task.get("available"):
+        tasks.append(
+            {
+                "task_id": as_text_or_none(active_task.get("task_id")) or "active_task",
+                "title": as_text_or_none(active_task.get("title")) or "当前任务",
+                "kind": as_text_or_none(active_task.get("kind")) or "task",
+                "status": as_text_or_none(active_task.get("stage_label")) or "-",
+                "effect_label": as_text_or_none(active_task.get("effect_label")) or "-",
+                "updated_at_local": as_text_or_none(active_task.get("updated_at_local")) or "-",
+                "is_legacy": False,
+                "history_config": active_task.get("history_config") if isinstance(active_task.get("history_config"), dict) else {},
+                "payload": active_task,
+            }
+        )
+
+    operator = operator_summary if isinstance(operator_summary, dict) else {}
+    progress_payload = progress if isinstance(progress, dict) else {}
+    legacy = legacy_campaign if isinstance(legacy_campaign, dict) else {}
+    legacy_title = (
+        as_text_or_none(operator.get("dataset_label"))
+        or as_text_or_none(progress_payload.get("active_track_label"))
+        or "旧脑电主线"
+    )
+    tasks.append(
+        {
+            "task_id": "legacy_bci_mainline",
+            "title": legacy_title,
+            "kind": "bci_autoresearch_legacy",
+            "status": as_text_or_none(operator.get("stage_label")) or as_text_or_none(progress_payload.get("stage")) or "-",
+            "effect_label": as_text_or_none(operator.get("effect_label")) or "-",
+            "updated_at_local": as_text_or_none(operator.get("updated_at_local")) or as_text_or_none(legacy.get("updated_at_local")) or "-",
+            "is_legacy": True,
+            "legacy_campaign_id": as_text_or_none(legacy.get("campaign_id")) or as_text_or_none(progress_payload.get("campaign_id")) or "-",
+            "history_config": {
+                "kind": "legacy_bci_mainline",
+                "source": "artifacts/monitor + experiment_ledger",
+                "primary_metric": "mean_pearson_r_zero_lag_macro",
+                "default_panel_scope": "legacy",
+            },
+            "payload": None,
+        }
+    )
+    default_task_id = as_text_or_none(tasks[0].get("task_id")) if tasks else None
+    return {
+        "default_task_id": default_task_id,
+        "tasks": tasks,
+    }
+
+
 def build_status() -> dict[str, Any]:
     exported_at = utc_now().replace(microsecond=0).isoformat().replace("+00:00", "Z")
     dataset = read_dataset_summary()
@@ -5627,7 +6120,7 @@ def build_status() -> dict[str, Any]:
     channel_qc = read_json(CHANNEL_QC_PATH)
     kinematics_qc = read_json(KINEMATICS_QC_PATH)
     primary_ledger_rows = read_jsonl(EXPERIMENT_LEDGER_PATH)
-    extra_ledger_rows = [] if is_gait_phase_benchmark_mode() else read_jsonl(EXTRA_LEDGER_PATH)
+    extra_ledger_rows = read_jsonl(EXTRA_LEDGER_PATH)
     raw_experiment_rows = [*primary_ledger_rows, *extra_ledger_rows]
     experiment_rows = merge_ledger_rows(primary_ledger_rows, extra_ledger_rows)
     judgment_rows = read_jsonl(JUDGMENT_UPDATES_PATH)
@@ -5777,6 +6270,28 @@ def build_status() -> dict[str, Any]:
         ),
     }
 
+    current_campaign_benchmark = build_current_campaign_benchmark(
+        autoresearch_status,
+        raw_experiment_rows,
+        read_jsonl(RESEARCH_QUERIES_PATH),
+        read_jsonl(RESEARCH_EVIDENCE_PATH),
+        judgment_rows,
+    )
+    rsvp_ship_image = build_rsvp_ship_image_summary(
+        read_json(RSVP_SHIP_IMAGE_LATEST_PATH),
+        director_plan=read_json(RSVP_SHIP_IMAGE_DIRECTOR_PLAN_PATH),
+        overnight_status=read_json(RSVP_SHIP_IMAGE_OVERNIGHT_STATUS_PATH),
+        history=build_rsvp_ship_image_history(RSVP_SHIP_IMAGE_OUTPUT_DIR),
+        research_loop=status_research_loop(ROOT, task_id="rsvp_ship_image_only_v0"),
+    )
+    active_task = build_active_dashboard_task(rsvp_ship_image)
+    task_registry = build_dashboard_task_registry(
+        active_task,
+        operator_summary=operator_summary,
+        progress=progress,
+        legacy_campaign=current_campaign_benchmark,
+    )
+
     return {
         "exported_at": exported_at,
         "exported_at_local": format_local_timestamp(exported_at),
@@ -5821,13 +6336,10 @@ def build_status() -> dict[str, Any]:
         "data_access": data_access,
         "artifacts": artifacts,
         "checkpoint": checkpoint_info,
-        "current_campaign_benchmark": build_current_campaign_benchmark(
-            autoresearch_status,
-            raw_experiment_rows,
-            read_jsonl(RESEARCH_QUERIES_PATH),
-            read_jsonl(RESEARCH_EVIDENCE_PATH),
-            judgment_rows,
-        ),
+        "current_campaign_benchmark": current_campaign_benchmark,
+        "task_registry": task_registry,
+        "active_task": active_task,
+        "rsvp_ship_image": rsvp_ship_image,
         "framework_benchmark": _build_framework_benchmark(),
     }
 
@@ -6013,11 +6525,11 @@ def build_mission_control_payload(
     interaction_history: list[dict[str, Any]] = []
 
     action_role_map = {
-        "think": "Director",
-        "execute": "Executor",
-        "pause": "Executor",
-        "resume": "Executor",
-        "end": "Executor",
+        "think": "方向选择",
+        "execute": "执行沙盒",
+        "pause": "执行沙盒",
+        "resume": "执行沙盒",
+        "end": "执行沙盒",
     }
     action_title_map = {
         "think": "提交思考动作",
@@ -6028,7 +6540,7 @@ def build_mission_control_payload(
     }
     _append_history(
         interaction_history,
-        role="Research Memory",
+        role="研究记录",
         recorded_at=latest_retrieval.get("recorded_at"),
         title="更新当前问题与证据",
         detail=current_problem,
@@ -6038,7 +6550,7 @@ def build_mission_control_payload(
     )
     _append_history(
         interaction_history,
-        role="Director",
+        role="方向选择",
         recorded_at=latest_decision.get("recorded_at"),
         title="更新推荐执行队列",
         detail=as_text_or_none(latest_decision.get("research_judgment_delta")) or "当前还没有新的队列判断。",
@@ -6048,7 +6560,7 @@ def build_mission_control_payload(
     )
     _append_history(
         interaction_history,
-        role="Director",
+        role="结果复核",
         recorded_at=latest_judgment.get("recorded_at"),
         title="写入 judgment",
         detail=as_text_or_none(latest_judgment.get("reason")) or "当前还没有新的 judgment。",
@@ -6066,7 +6578,7 @@ def build_mission_control_payload(
     )
     _append_history(
         interaction_history,
-        role="Executor",
+        role="执行沙盒",
         recorded_at=autoresearch_status.get("updated_at"),
         title="当前执行",
         detail=(
@@ -6079,7 +6591,7 @@ def build_mission_control_payload(
             or as_text_or_none(autoresearch_status.get("stage"))
             or "未知"
         ),
-        next_step=recommended_queue[0] if recommended_queue else "等待 Director 下发下一步。",
+        next_step=recommended_queue[0] if recommended_queue else "等待方向选择给出下一步。",
         source="autoresearch_status",
     )
     for event in recent_events:
@@ -6089,7 +6601,7 @@ def build_mission_control_payload(
             continue
         _append_history(
             interaction_history,
-            role=action_role_map.get(action, "Research Memory"),
+            role=action_role_map.get(action, "研究记录"),
             recorded_at=recorded_at,
             title=action_title_map.get(action, "记录控制事件"),
             detail=as_text_or_none(event.get("message")) or "当前还没有控制消息。",
@@ -6366,7 +6878,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8787)
+    parser.add_argument("--port", type=int, default=8878)
     return parser.parse_args()
 
 

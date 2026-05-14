@@ -46,8 +46,8 @@ def evaluate_guard_action(
     normalized_path = _normalize_path(path)
     scopes = list(allowed_change_scope or [])
     decision = "allow"
-    reason = "action is inside current ProgramMD policy"
-    policy_refs = ["ProgramMD.forbidden_actions"]
+    reason = "action is inside current Program policy"
+    policy_refs = ["Program.forbidden_actions"]
 
     if normalized_path.startswith("data/raw/"):
         decision = "deny"
@@ -61,7 +61,7 @@ def evaluate_guard_action(
     elif action_type == "modify_program" and str(program.get("status") or "") == "frozen":
         if _protected_change_requested(dict(requested_change or {})):
             decision = "deny"
-            reason = "frozen ProgramMD protected fields require amendment, not direct modification"
+            reason = "frozen Program protected fields require amendment, not direct modification"
     elif action_type == "write_file" and scopes and not _path_is_in_scope(normalized_path, scopes):
         decision = "needs_approval"
         reason = "write path is outside allowed_change_scope"

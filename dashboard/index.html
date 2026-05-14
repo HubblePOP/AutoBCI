@@ -16,12 +16,12 @@
       --ink: #2d271c;
       --muted: #766b55;
       --line: rgba(117, 91, 0, 0.12);
-      --ok: #2f7e63;
+      --ok: #5a8f79;
       --warn: #b8842d;
       --off: #8694a0;
       --shadow: 0 24px 60px rgba(117, 91, 0, 0.08);
-      --green: #3e8b78;
-      --green-line: #73bca1;
+      --green: #5a8f79;
+      --green-line: #7ea494;
       --gray-dot: rgba(117, 91, 0, 0.18);
       --rmse: #c66d2e;
       --bg-image: url("./assets/monet/wheatfield_poppies.jpg");
@@ -42,9 +42,9 @@
       --card-shadow-soft: none;
       --glass-soft: rgba(255, 255, 255, 0.12);
       --glass-muted: rgba(255, 255, 255, 0.08);
-      --plot-surface: rgba(255, 249, 241, 0.76);
-      --plot-surface-2: rgba(236, 226, 209, 0.56);
-      --plot-grid: rgba(117, 91, 0, 0.06);
+      --plot-surface: rgba(255, 249, 241, 0.34);
+      --plot-surface-2: rgba(223, 214, 197, 0.16);
+      --plot-grid: rgba(117, 91, 0, 0.032);
       --chip-surface: rgba(255, 255, 255, 0.64);
       --chip-border: rgba(255, 255, 255, 0.76);
       --row-best-surface: rgba(62, 139, 120, 0.10);
@@ -130,6 +130,8 @@
 
     * { box-sizing: border-box; }
 
+    [hidden] { display: none !important; }
+
     body {
       margin: 0;
       min-height: 100vh;
@@ -180,28 +182,35 @@
     .theme-toggle {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 5px;
+      gap: 6px;
+      padding: 2px 3px;
       border-radius: 999px;
-      background: color-mix(in srgb, var(--glass-soft) 88%, transparent 12%);
-      border: 1px solid var(--panel-border);
-      backdrop-filter: blur(20px);
-      box-shadow: inset 0 1px 0 var(--panel-highlight);
+      background: transparent;
+      border: 1px solid transparent;
+      opacity: 0.42;
+      transition: opacity 160ms ease, background 160ms ease, border-color 160ms ease;
+    }
+
+    .theme-toggle:hover,
+    .theme-toggle:focus-within {
+      opacity: 0.92;
+      background: color-mix(in srgb, var(--glass-soft) 42%, transparent 58%);
+      border-color: color-mix(in srgb, var(--panel-border) 48%, transparent 52%);
+      backdrop-filter: blur(14px);
     }
 
     .theme-button {
       appearance: none;
       border: 0;
-      padding: 8px 12px;
+      padding: 4px 6px;
       border-radius: 999px;
       background: transparent;
       color: var(--muted);
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
       cursor: pointer;
-      transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+      transition: color 160ms ease, opacity 160ms ease, transform 160ms ease;
     }
 
     .theme-button:hover {
@@ -210,9 +219,10 @@
     }
 
     .theme-button.active {
-      background: var(--chip-surface);
       color: var(--accent-strong);
-      box-shadow: 0 8px 18px rgba(117, 91, 0, 0.08);
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 4px;
     }
 
     .mission-header-side {
@@ -2037,6 +2047,57 @@
       gap: 14px;
     }
 
+    .task-switcher {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .task-switcher-button {
+      appearance: none;
+      display: grid;
+      gap: 3px;
+      min-width: min(280px, 100%);
+      max-width: 380px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(23, 50, 74, 0.10);
+      background: color-mix(in srgb, var(--chip-surface) 72%, transparent 28%);
+      color: var(--ink);
+      text-align: left;
+      cursor: pointer;
+      box-shadow: var(--card-shadow-soft);
+      transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+    }
+
+    .task-switcher-button:hover {
+      transform: translateY(-1px);
+      border-color: color-mix(in srgb, var(--green-line) 42%, rgba(23, 50, 74, 0.10) 58%);
+      background: color-mix(in srgb, var(--chip-surface) 86%, transparent 14%);
+    }
+
+    .task-switcher-button.active {
+      border-color: color-mix(in srgb, var(--green-line) 68%, rgba(23, 50, 74, 0.10) 32%);
+      background: color-mix(in srgb, var(--row-best-surface) 46%, var(--chip-surface) 54%);
+    }
+
+    .task-switcher-title {
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .task-switcher-meta {
+      font-size: 11px;
+      line-height: 1.35;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
     .campaign-benchmark-top {
       display: grid;
       grid-template-columns: minmax(260px, 1.1fr) minmax(260px, 0.9fr);
@@ -2046,6 +2107,7 @@
 
     .campaign-benchmark-card,
     .campaign-benchmark-side {
+      min-width: 0;
       border-radius: 16px;
       border: 1px solid rgba(23, 50, 74, 0.08);
       background: var(--card-surface);
@@ -2072,6 +2134,8 @@
       font-weight: 700;
       line-height: 1.3;
       color: var(--ink);
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .campaign-fact-note {
@@ -2079,6 +2143,8 @@
       font-size: 11px;
       line-height: 1.4;
       color: var(--muted);
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .campaign-chip-row,
@@ -2117,6 +2183,78 @@
       font-size: 12px;
       line-height: 1.55;
       color: var(--muted);
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    #rsvp-ship-image .campaign-benchmark-grid {
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    }
+
+    #rsvp-ship-image .campaign-benchmark-card {
+      min-height: 108px;
+    }
+
+    .rsvp-sota-panel {
+      margin-top: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .rsvp-sota-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: end;
+      flex-wrap: wrap;
+    }
+
+    .rsvp-sota-title {
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .rsvp-sota-note {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .rsvp-sota-svg {
+      width: 100%;
+      min-height: 260px;
+      border-radius: 18px;
+      border: 1px solid rgba(23, 50, 74, 0.08);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--plot-surface) 82%, transparent 18%), color-mix(in srgb, var(--plot-surface-2) 82%, transparent 18%));
+      overflow: hidden;
+    }
+
+    .rsvp-sota-run-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+    }
+
+    .rsvp-sota-run {
+      border-radius: 14px;
+      border: 1px solid rgba(23, 50, 74, 0.08);
+      background: var(--card-surface);
+      padding: 10px 12px;
+      display: grid;
+      gap: 3px;
+    }
+
+    .rsvp-sota-run strong {
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .rsvp-sota-run span {
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--muted);
+      overflow-wrap: anywhere;
     }
 
     @media (max-width: 1040px) {
@@ -2351,11 +2489,11 @@
             <h1>AutoBci</h1>
             <span class="mission-chip off" id="mission-mode-chip">等待数据</span>
           </div>
-          <div id="mission-subtitle" class="mission-subtitle">核心指标、当前执行、Current Campaign、Framework Benchmark 和决策链路共用同一份状态数据。</div>
+          <div id="mission-subtitle" class="mission-subtitle">任务切换会同步切换历史记录、SOTA 轨迹、队列和产物视图。</div>
         </div>
         <div class="mission-header-side">
           <div class="theme-toggle" aria-label="切换页面风格">
-            <button class="theme-button active" type="button" data-theme="wheatfield">莫奈麦田</button>
+            <button class="theme-button active" type="button" data-theme="wheatfield">麦田</button>
             <button class="theme-button" type="button" data-theme="lilies">睡莲</button>
           </div>
           <div class="mission-chip-row" id="mission-header-chips">
@@ -2383,7 +2521,78 @@
           <div id="updated-at" class="mission-fact-value">-</div>
         </div>
       </div>
+      <div id="task-switcher" class="task-switcher"></div>
     </section>
+
+    <section id="rsvp-ship-image-panel" class="panel" data-task-scope="rsvp" style="margin-top: 18px; padding: 20px 22px;">
+      <div class="panel-head" style="margin-bottom: 14px;">
+        <div class="panel-title" style="font-size: 15px; font-weight: 700;">当前任务：RSVP 纯图像船只二分类</div>
+        <div class="panel-note" style="font-size: 12px; color: var(--muted);">这是全新的 image-only 任务：10+ 候选算法、留出测试集结果和研究方向队列独立展示，不和旧脑电主线混算。</div>
+      </div>
+      <div id="rsvp-ship-image" class="campaign-benchmark-shell">
+        <div class="summary-empty">加载中…</div>
+      </div>
+      <div id="rsvp-sota-trajectory" class="rsvp-sota-panel">
+        <div class="summary-empty">SOTA 轨迹加载中…</div>
+      </div>
+    </section>
+
+    <div class="mission-full-width" data-task-scope="legacy" style="display: grid; gap: 18px; margin-top: 18px; margin-bottom: 18px;">
+      <section id="legacy-sota-panel" class="panel mission-stack-card" data-task-scope="legacy">
+        <div class="mission-stack-head">
+          <div class="mission-stack-title">旧脑电主线指标演进 Legacy BCI SOTA</div>
+          <div id="rmse-coverage" class="mission-stack-note">这一区只保留旧的脑电解码主线，不参与当前纯图像任务排名。</div>
+        </div>
+        <div class="mainline-trend-copy" style="margin-bottom: 16px;">
+          绿色线始终表示全历史真正刷新的主线，时间范围只裁剪当前可见窗口。<strong>大圆</strong>代表当前最高的 formal SOTA，<strong>四角星</strong>代表历史 SOTA 节点，<strong>灰蓝圆点</strong>代表 formal 尝试，<strong>赭色菱形</strong>代表 smoke 尝试。
+        </div>
+
+        <div id="health-indicator" class="health-indicator"></div>
+
+        <article class="chart-card epic-trend-slot" style="margin-bottom: 20px;">
+          <div class="chart-head">
+            <div class="chart-title">
+              <div class="chart-label">核心指标 (相关系数 r)</div>
+              <div class="chart-value">主线 SOTA 演进轨迹</div>
+            </div>
+            <div class="chart-controls" style="display:flex; gap:8px; align-items:center;">
+                <select id="sota-time-range" class="console-button" style="padding: 4px 8px; font-size: 11px; height: auto;" onchange="window.updateSotaTimeRange(this.value)">
+                  <option value="24h">最近 24 小时</option>
+                  <option value="3d">最近 3 天</option>
+                  <option value="7d">最近 7 天</option>
+                  <option value="all" selected>全部历史</option>
+                </select>
+                <select id="sota-source-filter" class="console-button" style="padding: 4px 8px; font-size: 11px; height: auto;" onchange="window.updateSotaSourceFilter(this.value)">
+                  <option value="all" selected>全部</option>
+                  <option value="gait_phase_eeg">步态二分类</option>
+                  <option value="legacy_continuous_mainline">旧连续预测</option>
+                  <option value="reference">参考/支线</option>
+                </select>
+              </div>
+            <div class="chart-legend">
+              <span><i class="kept milestone"></i>当前最新 SOTA</span>
+              <span style="display:inline-flex;align-items:center;gap:4px"><i class="kept milestone" style="transform:none;clip-path:polygon(50% 0%, 63% 37%, 100% 50%, 63% 63%, 50% 100%, 37% 63%, 0% 50%, 37% 37%);border-radius:0;background:rgba(126,164,148,0.22);border:1px solid rgba(126,164,148,0.92)"></i>历史 SOTA 节点</span>
+              <span><i class="discarded cloud"></i>formal 未留用</span>
+              <span style="display:inline-flex;align-items:center;gap:4px"><i class="discarded cloud" style="transform:rotate(45deg);border-radius:2px;background:rgba(173,132,84,0.34);border-color:rgba(196,152,102,0.92)"></i>smoke 尝试</span>
+            </div>
+          </div>
+          <div id="mainline-primary" class="chart-shell">
+            <div class="summary-empty">这张图当前还没有真实点。</div>
+          </div>
+          <div id="heatmap-primary" class="heatmap-bar"></div>
+        </article>
+      </section>
+
+      <section id="legacy-mainline-history-panel" class="panel" data-task-scope="legacy">
+        <div class="panel-head">
+          <div class="panel-title">最佳模型榜单 Scoreboard</div>
+          <div id="mainline-note" class="panel-note">这张图不依赖当前有没有在跑，会一直保留主线历史。</div>
+        </div>
+        <div id="mainline-family-best-strip" class="moonshot-strip">
+          <div class="moonshot-empty">当前还没有可显示的候选模型。</div>
+        </div>
+      </section>
+    </div>
 
     <div id="mission-control-shell" class="mission-shell">
       <div class="mission-main-grid">
@@ -2469,67 +2678,10 @@
       </section>
       </div>
 
-      <div class="mission-full-width" style="display: grid; gap: 18px; margin-top: 18px; margin-bottom: 18px;">
-        <section class="panel mission-stack-card">
-          <div class="mission-stack-head">
-            <div class="mission-stack-title">核心指标演进 SOTA Evolution</div>
-            <div id="rmse-coverage" class="mission-stack-note">不仅是数字的堆砌，更是研究思路的进化史。</div>
-          </div>
-          <div class="mainline-trend-copy" style="margin-bottom: 16px;">
-            记录每一次模型突破与背后的探索代价。<strong>大圆</strong>代表 formal 刷新 SOTA，<strong>小灰圆</strong>代表 formal 未留用，<strong>小灰菱形</strong>代表 smoke 尝试。
-          </div>
-
-          <div id="health-indicator" class="health-indicator"></div>
-
-          <!-- 占据全宽的主图：相关系数 r 的演进，重点展示 -->
-          <article class="chart-card epic-trend-slot" style="margin-bottom: 20px;">
-            <div class="chart-head">
-              <div class="chart-title">
-                <div class="chart-label">核心指标 (相关系数 r)</div>
-                <div class="chart-value">主线 SOTA 演进轨迹</div>
-              </div>
-              <div class="chart-controls" style="display:flex; gap:8px; align-items:center;">
-                  <select id="sota-time-range" class="console-button" style="padding: 4px 8px; font-size: 11px; height: auto;" onchange="window.updateSotaTimeRange(this.value)">
-                    <option value="24h">最近 24 小时</option>
-                    <option value="3d">最近 3 天</option>
-                    <option value="7d">最近 7 天</option>
-                    <option value="all" selected>全部历史</option>
-                  </select>
-                  <select id="sota-source-filter" class="console-button" style="padding: 4px 8px; font-size: 11px; height: auto;" onchange="window.updateSotaSourceFilter(this.value)">
-                    <option value="all" selected>全部</option>
-                    <option value="gait_phase_eeg">步态二分类</option>
-                    <option value="legacy_continuous_mainline">旧连续预测</option>
-                    <option value="reference">参考/支线</option>
-                  </select>
-                </div>
-              <div class="chart-legend">
-                <span><i class="kept milestone"></i>formal 突破 SOTA</span>
-                <span><i class="discarded cloud"></i>formal 未留用</span>
-                <span style="display:inline-flex;align-items:center;gap:4px"><i class="discarded cloud" style="transform:rotate(45deg);border-radius:2px"></i>smoke 尝试</span>
-              </div>
-            </div>
-            <div id="mainline-primary" class="chart-shell">
-              <div class="summary-empty">这张图当前还没有真实点。</div>
-            </div>
-            <div id="heatmap-primary" class="heatmap-bar"></div>
-          </article>
-        </section>
-
-        <section class="panel">
-          <div class="panel-head">
-            <div class="panel-title">最佳模型榜单 Scoreboard</div>
-            <div id="mainline-note" class="panel-note">这张图不依赖当前有没有在跑，会一直保留主线历史。</div>
-          </div>
-          <div id="mainline-family-best-strip" class="moonshot-strip">
-            <div class="moonshot-empty">当前还没有可显示的候选模型。</div>
-          </div>
-        </section>
-      </div>
-
-      <section id="current-campaign-benchmark-panel" class="panel" style="margin-top: 18px; padding: 20px 22px;">
+      <section id="current-campaign-benchmark-panel" class="panel" data-task-scope="legacy" style="margin-top: 18px; padding: 20px 22px;">
         <div class="panel-head" style="margin-bottom: 14px;">
-          <div class="panel-title" style="font-size: 15px; font-weight: 700;">当前研究轮次 Current Campaign</div>
-          <div class="panel-note" style="font-size: 12px; color: var(--muted);">只讲当前或最近一轮 AutoResearch 到底做了什么、停在了哪里、有没有搜索、试了几个算法方向。</div>
+          <div class="panel-title" style="font-size: 15px; font-weight: 700;">旧脑电 AutoResearch 轮次 Legacy Campaign</div>
+          <div class="panel-note" style="font-size: 12px; color: var(--muted);">这是旧任务状态投影，只用于历史对照，不参与当前 RSVP 纯图像任务。</div>
         </div>
         <div id="current-campaign-benchmark" class="campaign-benchmark-shell">
           <div class="summary-empty">加载中…</div>
@@ -2537,17 +2689,17 @@
       </section>
 
       <!-- Framework Benchmark Panel -->
-      <section id="framework-benchmark-panel" class="panel" style="margin-top: 18px; padding: 20px 22px;">
+      <section id="framework-benchmark-panel" class="panel" data-task-scope="legacy" style="margin-top: 18px; padding: 20px 22px;">
         <div class="panel-head" style="margin-bottom: 14px;">
-          <div class="panel-title" style="font-size: 15px; font-weight: 700;">历史调度基准 Framework Benchmark</div>
-          <div class="panel-note" style="font-size: 12px; color: var(--muted);">看整个框架历史上跑得多快、多会换方向、多长时间能持续工作。</div>
+          <div class="panel-title" style="font-size: 15px; font-weight: 700;">旧框架历史调度基准 Legacy Framework Benchmark</div>
+          <div class="panel-note" style="font-size: 12px; color: var(--muted);">这是历史框架运行统计，不代表当前纯图像任务已经跑过同样流程。</div>
         </div>
         <div id="benchmark-metrics" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;">
           <div class="summary-empty" style="grid-column: 1/-1;">加载中…</div>
         </div>
       </section>
 
-      <section class="panel context-tabs" style="margin-top: 18px;">
+      <section id="legacy-context-panel" class="panel context-tabs" data-task-scope="legacy" style="margin-top: 18px;">
         <div class="context-tab-bar">
           <button class="context-tab-button" data-tab="research-tree">研究分支树</button>
           <button class="context-tab-button active" data-tab="thinking">决策链路</button>
@@ -2560,7 +2712,7 @@
           </div>
         </div>
         <div id="tab-thinking" class="context-tab-panel">
-          <div class="panel-note" style="margin-bottom: 12px;">Director / Executor / Research Memory 的真实交互历史。</div>
+          <div class="panel-note" style="margin-bottom: 12px;">研究方向、执行沙盒和研究记录的真实交互历史。</div>
           <div id="thinking-timeline" class="control-feed">
             <div class="mission-list-empty">当前还没有思考链路。</div>
           </div>
@@ -2612,13 +2764,13 @@
       ink: "#17324a",
       muted: "#6c665d",
       grid: "rgba(117, 91, 0, 0.10)",
-      discarded: "rgba(115, 108, 98, 0.24)",
-      discardedStroke: "rgba(98, 90, 78, 0.36)",
-      kept: "#287e73",
-      keptStroke: "rgba(20, 101, 92, 0.48)",
-      running: "#66aba0",
-      smoke: "rgba(191, 128, 48, 0.22)",
-      smokeStroke: "rgba(177, 113, 28, 0.60)",
+      discarded: "rgba(145, 160, 176, 0.72)",
+      discardedStroke: "rgba(116, 132, 149, 0.96)",
+      kept: "#5a8f79",
+      keptStroke: "rgba(74, 118, 103, 0.64)",
+      running: "#8fae9f",
+      smoke: "rgba(180, 137, 90, 0.62)",
+      smokeStroke: "rgba(158, 111, 60, 0.94)",
       reference: "#b8842d",
       rmse: "#c66d2e",
       truth: "#4e6fae",
@@ -2743,6 +2895,19 @@
       return commands.join(" ");
     }
 
+    function buildFourPointStarPoints(x, y, outer = 6, inner = 2.7) {
+      return [
+        `${x},${y - outer}`,
+        `${x + inner},${y - inner}`,
+        `${x + outer},${y}`,
+        `${x + inner},${y + inner}`,
+        `${x},${y + outer}`,
+        `${x - inner},${y + inner}`,
+        `${x - outer},${y}`,
+        `${x - inner},${y - inner}`,
+      ].join(" ");
+    }
+
     function branchPalette(index) {
       const palette = [
         { stroke: COLORS.branch0, fill: COLORS.branch0Fill },
@@ -2788,21 +2953,25 @@
         const baseColor = customColor || "rgba(135, 185, 225, 0.95)";
         
         if (!isBest) {
-          // Normal attempts: small squares/diamonds
-          const r = 2.2;
+          const r = point.is_smoke ? 3.15 : 3.1;
+          const fill = point.is_smoke ? COLORS.smoke : COLORS.discarded;
+          const stroke = point.is_smoke ? COLORS.smokeStroke : (customColor || COLORS.discardedStroke);
           return `
-            <g opacity="0.45">
+            <g opacity="${point.is_smoke ? "0.90" : "0.94"}">
               <title>历史探索: ${escapeHtml(title)}</title>
-              <rect x="${x - r}" y="${y - r}" width="${r * 2}" height="${r * 2}" transform="rotate(45 ${x} ${y})" fill="transparent" stroke="${baseColor}" stroke-width="1.2" />
+              ${
+                point.is_smoke
+                  ? `<rect x="${x - r}" y="${y - r}" width="${r * 2}" height="${r * 2}" transform="rotate(45 ${x} ${y})" fill="${fill}" stroke="${stroke}" stroke-width="1.25" />`
+                  : `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="1.15" />`
+              }
             </g>
           `;
         } else {
-          // Legacy true SOTA: Custom color circle (NO text, NO lines)
-          const radius = 4.0;
+          const star = buildFourPointStarPoints(x, y, 5.7, 2.5);
           return `
             <g opacity="0.95">
               <title>历史天花板: ${escapeHtml(title)}</title>
-              <circle cx="${x}" cy="${y}" r="${radius}" fill="rgba(252, 248, 240, 0.8)" stroke="${baseColor}" stroke-width="2.2" />
+              <polygon points="${star}" fill="rgba(247, 250, 246, 0.76)" stroke="${baseColor}" stroke-width="1.7" />
             </g>
           `;
         }
@@ -2834,13 +3003,58 @@
         `;
       }
 
-      const fallbackStroke = mode === "legacy" ? "rgba(180, 195, 210, 0.25)" : (mode === "mainline" ? "var(--ok)" : "rgba(184, 132, 45, 0.40)");
-      const strokeColor = customColor || fallbackStroke;
-      const radius = mode === "legacy" ? 1.8 : (mode === "mainline" ? 4.0 : 1.8);
+      if (mode === "legacy") {
+        const isSmoke = Boolean(point.is_smoke);
+        const isControl = Boolean(point.is_control);
+        const fill = isSmoke
+          ? COLORS.smoke
+          : (isControl ? "rgba(170, 178, 188, 0.34)" : COLORS.discarded);
+        const stroke = isSmoke
+          ? COLORS.smokeStroke
+          : (isControl ? "rgba(145, 155, 167, 0.76)" : (customColor || COLORS.discardedStroke));
+        if (isSmoke) {
+          const r = 3.2;
+          return `
+            <g opacity="0.92">
+              <title>${escapeHtml(title)}</title>
+              <rect x="${x - r}" y="${y - r}" width="${r * 2}" height="${r * 2}" transform="rotate(45 ${x} ${y})" fill="${fill}" stroke="${stroke}" stroke-width="1.15" />
+            </g>
+          `;
+        }
+        return `
+          <g opacity="${isControl ? "0.72" : "0.96"}">
+            <title>${escapeHtml(title)}</title>
+            <circle cx="${x}" cy="${y}" r="${isControl ? "2.7" : "3.25"}" fill="${fill}" stroke="${stroke}" stroke-width="${isControl ? "0.9" : "1.0"}" />
+          </g>
+        `;
+      }
+
+      if (mode === "mainline") {
+        const isLatest = Boolean(point.is_latest_running_best);
+        if (isLatest) {
+          return `
+            <g opacity="1">
+              <title>${escapeHtml(title)}</title>
+              <circle cx="${x}" cy="${y}" r="6.4" fill="rgba(90, 143, 121, 0.92)" stroke="rgba(238, 232, 221, 0.92)" stroke-width="1.35" />
+              <circle cx="${x}" cy="${y}" r="2.55" fill="rgba(250, 246, 238, 0.92)" stroke="none" />
+              <circle cx="${x}" cy="${y}" r="9.2" fill="none" stroke="rgba(90, 143, 121, 0.16)" stroke-width="2.2" />
+            </g>
+          `;
+        }
+        const star = buildFourPointStarPoints(x, y, 5.5, 2.4);
+        return `
+          <g opacity="0.92">
+            <title>${escapeHtml(title)}</title>
+            <polygon points="${star}" fill="rgba(126, 164, 148, 0.24)" stroke="var(--green-line)" stroke-width="1.35" />
+          </g>
+        `;
+      }
+
+      const fallbackStroke = customColor || "rgba(184, 132, 45, 0.40)";
       return `
-        <g opacity="${mode === "mainline" ? "0.95" : "0.4"}">
+        <g opacity="0.4">
           <title>${escapeHtml(title)}</title>
-          <circle cx="${x}" cy="${y}" r="${radius}" fill="${mode === "mainline" ? "var(--ok)" : "transparent"}" stroke="${mode === "mainline" ? "rgba(255,255,255,0.8)" : strokeColor}" stroke-width="${mode === "mainline" ? "1.5" : "1.2"}" />
+          <circle cx="${x}" cy="${y}" r="1.8" fill="transparent" stroke="${fallbackStroke}" stroke-width="1.2" />
         </g>
       `;
     }
@@ -2932,8 +3146,6 @@
       const visibleValues = [
         ...points.map((item) => Number(item.value)).filter((item) => Number.isFinite(item)),
         ...running.map((item) => Number(item.value)).filter((item) => Number.isFinite(item)),
-        ...algorithmSeries.flatMap((series) => (Array.isArray(series?.points) ? series.points : []).map((item) => Number(item.value)).filter((item) => Number.isFinite(item))),
-        ...referenceSeries.flatMap((series) => (Array.isArray(series?.points) ? series.points : []).map((item) => Number(item.value)).filter((item) => Number.isFinite(item))),
       ];
       const hasVisibleHistory = points.length || running.length || algorithmSeries.length || referenceSeries.length;
       if (!hasVisibleHistory || !visibleValues.length) {
@@ -2971,50 +3183,30 @@
             const x = pointX(tick.start_pct, left, innerWidth);
             return `<line x1="${x}" y1="${top}" x2="${x}" y2="${height - bottom}" stroke="${COLORS.grid}" stroke-width="1" />`;
           }).join("")}
-          ${renderChartSeries(referenceSeries, scale, left, top, innerWidth, innerHeight, "reference")}
           ${
             (() => {
-              // Extract ALL points from legacy, mainline (gait), and currently running
-              const allPoints = [
-                ...legacySeries.flatMap(s => s.points || []),
-                ...gaitSeries.flatMap(s => s.points || []),
+              const envelopePoints = [...running];
+              const globalBestIds = new Set(envelopePoints.map((point) => point.run_id));
+              const latestFormalBestRunId = [...envelopePoints].reverse().find((point) => !point.is_smoke)?.run_id || (envelopePoints.length ? envelopePoints[envelopePoints.length - 1].run_id : null);
+              const allAttempts = [
                 ...points,
-                ...running
-              ].sort((a, b) => new Date(a.recorded_at || a._timeMs || 0) - new Date(b.recorded_at || b._timeMs || 0));
-              
-              if (allPoints.length === 0) return "";
-              
-              // Calculate the ABSOLUTE global upper envelope across the entire chart
-              const envelopePoints = [];
-              let currentMax = -Infinity;
-              const globalBestIds = new Set();
-              
-              allPoints.forEach(p => {
-                const val = Number(p.value);
-                // ONLY keep points that strictly increase the global maximum across ALL tasks
-                if (val > currentMax) {
-                  currentMax = val;
-                  envelopePoints.push(p);
-                  globalBestIds.add(p.run_id);
-                }
+                ...algorithmSeries.flatMap((series) => Array.isArray(series?.points) ? series.points : []),
+                ...referenceSeries.flatMap((series) => Array.isArray(series?.points) ? series.points : []),
+              ];
+              const backgroundPoints = allAttempts.filter((point, index, source) => {
+                if (!point?.run_id || globalBestIds.has(point.run_id)) return false;
+                return source.findIndex((candidate) => candidate?.run_id === point.run_id) === index;
               });
-              
-              // Also draw the background points (the ones that didn't make it to the envelope)
-              // so the chart isn't completely empty below the line, but keep them very faint
-              const backgroundLayer = allPoints
-                .filter(p => !globalBestIds.has(p.run_id))
-                .map(point => renderChartPointGlyph(point, scale, left, top, innerWidth, innerHeight, "legacy", "rgba(180, 195, 210, 0.25)"))
+              const backgroundLayer = backgroundPoints
+                .map(point => renderChartPointGlyph(point, scale, left, top, innerWidth, innerHeight, "legacy", "rgba(116, 132, 149, 0.96)"))
                 .join("");
-              
-              // Draw the points that belong to the envelope
+
               const pointLayer = envelopePoints
-                .map(point => renderChartPointGlyph(point, scale, left, top, innerWidth, innerHeight, "mainline", "var(--ok)"))
+                .map(point => renderChartPointGlyph({ ...point, is_latest_running_best: point.run_id === latestFormalBestRunId }, scale, left, top, innerWidth, innerHeight, "mainline", "var(--ok)"))
                 .join("");
-                
-              // Draw ONE single continuous line connecting the global envelope points across the whole chart
-              // Use a subtle gradient or solid bright color depending on the theme
-              const pathLayer = `<path d="${buildLinePath(envelopePoints, scale, left, top, innerWidth, innerHeight)}" fill="none" stroke="var(--ok)" stroke-width="2.5" opacity="0.85" stroke-linejoin="round" stroke-linecap="round" />`;
-              
+              const pathLayer = envelopePoints.length
+                ? `<path d="${buildLinePath(envelopePoints, scale, left, top, innerWidth, innerHeight)}" fill="none" stroke="rgba(126, 164, 148, 0.58)" stroke-width="2.1" opacity="0.86" stroke-dasharray="4 4" stroke-linejoin="round" stroke-linecap="round" />`
+                : "";
               return `<g>${backgroundLayer}${pathLayer}${pointLayer}</g>`;
             })()
           }
@@ -3282,6 +3474,268 @@
       `;
     }
 
+    function renderRsvpSotaTrajectory(history, scoreStory = {}, candidates = [], loop = {}) {
+      const container = document.getElementById("rsvp-sota-trajectory");
+      if (!container) return;
+      const rows = Array.isArray(candidates)
+        ? candidates
+            .map((item, index) => ({
+              ...item,
+              index,
+              val: Number(item.val_balanced_accuracy),
+              test: Number(item.test_balanced_accuracy),
+              label: displayText(item.algorithm_label, item.model_family || `候选 ${index + 1}`),
+            }))
+            .filter((item) => Number.isFinite(item.test) || Number.isFinite(item.val))
+            .slice(0, 12)
+        : [];
+      const loopRows = Array.isArray(loop?.trajectory)
+        ? loop.trajectory
+            .map((item, index) => ({
+              ...item,
+              index,
+              selected: Number(item.selected_test_balanced_accuracy),
+              best: Number(item.per_run_best_test_balanced_accuracy),
+              label: displayText(item.title, item.track_id || `track ${index + 1}`),
+            }))
+            .filter((item) => Number.isFinite(item.selected) || Number.isFinite(item.best))
+        : [];
+      if (!rows.length && !loopRows.length) {
+        container.innerHTML = `<div class="summary-empty">当前还没有可画的候选算法或 research-loop 结果。</div>`;
+        return;
+      }
+
+      const width = 980;
+      const height = 360;
+      const pad = { left: 52, right: 24, top: 28, bottom: 92 };
+      const plotW = width - pad.left - pad.right;
+      const plotH = height - pad.top - pad.bottom;
+      const robustScore = Number(scoreStory?.robust_accepted_best?.score);
+      const values = rows.flatMap((row) => [row.val, row.test]).filter(Number.isFinite);
+      loopRows.forEach((row) => {
+        if (Number.isFinite(row.selected)) values.push(row.selected);
+        if (Number.isFinite(row.best)) values.push(row.best);
+      });
+      if (Number.isFinite(robustScore)) values.push(robustScore);
+      const rawMin = Math.min(...values);
+      const rawMax = Math.max(...values);
+      const yMin = Math.max(0, rawMin - 0.035);
+      const yMax = Math.min(1, Math.max(rawMax + 0.025, yMin + 0.05));
+      const xFor = (idx, count) => pad.left + (count <= 1 ? plotW / 2 : (idx / (count - 1)) * plotW);
+      const yFor = (value) => pad.top + (1 - ((value - yMin) / (yMax - yMin))) * plotH;
+      const robustLine = Number.isFinite(robustScore)
+        ? `<line x1="${pad.left}" x2="${width - pad.right}" y1="${yFor(robustScore).toFixed(1)}" y2="${yFor(robustScore).toFixed(1)}" stroke="rgba(42,107,93,0.72)" stroke-width="2.4" stroke-dasharray="8 6" />`
+        : "";
+      const gridLines = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+        const value = yMin + (yMax - yMin) * ratio;
+        const y = yFor(value);
+        return `
+          <line x1="${pad.left}" x2="${width - pad.right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(117,91,0,0.10)" />
+          <text x="${pad.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="currentColor">${fmt(value, 2)}</text>
+        `;
+      }).join("");
+      const candidateMarks = rows.map((row, idx) => {
+        const x = xFor(idx, rows.length);
+        const yTest = Number.isFinite(row.test) ? yFor(row.test) : null;
+        const yVal = Number.isFinite(row.val) ? yFor(row.val) : null;
+        const isSelected = Boolean(row.selected);
+        const label = `${row.label} · val ${fmt(row.val, 4)} · test ${fmt(row.test, 4)}`;
+        return `
+          <g>
+            ${yTest != null && yVal != null ? `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${yVal.toFixed(1)}" y2="${yTest.toFixed(1)}" stroke="rgba(104,122,140,0.32)" stroke-width="2" />` : ""}
+            ${yVal != null ? `<circle cx="${x.toFixed(1)}" cy="${yVal.toFixed(1)}" r="4.2" fill="rgba(116,132,149,0.72)" stroke="rgba(255,255,255,0.82)" stroke-width="1.2" />` : ""}
+            ${yTest != null ? `<circle cx="${x.toFixed(1)}" cy="${yTest.toFixed(1)}" r="${isSelected ? 7 : 5.2}" fill="${isSelected ? "rgba(183,132,45,0.95)" : "rgba(90,143,121,0.92)"}" stroke="rgba(255,255,255,0.92)" stroke-width="${isSelected ? 2.2 : 1.4}" />` : ""}
+            <text x="${x.toFixed(1)}" y="${height - 58}" text-anchor="end" transform="rotate(-36 ${x.toFixed(1)} ${height - 58})" font-size="10" fill="currentColor">${escapeHtml(row.label).slice(0, 18)}</text>
+            <title>${escapeHtml(label)}${isSelected ? " · 系统选中" : ""}</title>
+          </g>
+        `;
+      }).join("");
+      const timelineHeight = 240;
+      const timelinePad = { left: 52, right: 24, top: 26, bottom: 54 };
+      const timelinePlotW = width - timelinePad.left - timelinePad.right;
+      const timelinePlotH = timelineHeight - timelinePad.top - timelinePad.bottom;
+      const timelineXFor = (idx, count) => timelinePad.left + (count <= 1 ? timelinePlotW / 2 : (idx / (count - 1)) * timelinePlotW);
+      const timelineYFor = (value) => timelinePad.top + (1 - ((value - yMin) / (yMax - yMin))) * timelinePlotH;
+      const timelineGrid = [0, 0.5, 1].map((ratio) => {
+        const value = yMin + (yMax - yMin) * ratio;
+        const y = timelineYFor(value);
+        return `
+          <line x1="${timelinePad.left}" x2="${width - timelinePad.right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(117,91,0,0.10)" />
+          <text x="${timelinePad.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="currentColor">${fmt(value, 2)}</text>
+        `;
+      }).join("");
+      const timelineBestLine = loopRows.length
+        ? loopRows.map((row, idx) => `${timelineXFor(idx, loopRows.length).toFixed(1)},${timelineYFor(Number.isFinite(row.best) ? row.best : row.selected).toFixed(1)}`).join(" ")
+        : "";
+      const timelineSelectedLine = loopRows.length
+        ? loopRows.map((row, idx) => `${timelineXFor(idx, loopRows.length).toFixed(1)},${timelineYFor(Number.isFinite(row.selected) ? row.selected : row.best).toFixed(1)}`).join(" ")
+        : "";
+      const timelineRobustLine = Number.isFinite(robustScore)
+        ? `<line x1="${timelinePad.left}" x2="${width - timelinePad.right}" y1="${timelineYFor(robustScore).toFixed(1)}" y2="${timelineYFor(robustScore).toFixed(1)}" stroke="rgba(42,107,93,0.72)" stroke-width="2.2" stroke-dasharray="8 6" />`
+        : "";
+      const timelineMarks = loopRows.map((row, idx) => {
+        const x = timelineXFor(idx, loopRows.length);
+        const y = timelineYFor(Number.isFinite(row.best) ? row.best : row.selected);
+        const label = displayText(row.title, row.track_id || `track ${idx + 1}`);
+        return `
+          <g>
+            <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${row.decision === "promoted" ? 6.8 : 5.2}" fill="${row.decision === "promoted" ? "rgba(42,107,93,0.95)" : "rgba(139,96,70,0.74)"}" stroke="rgba(255,255,255,0.9)" stroke-width="1.6" />
+            <text x="${x.toFixed(1)}" y="${timelineHeight - 22}" text-anchor="middle" font-size="10" fill="currentColor">${escapeHtml(label).slice(0, 12)}</text>
+            <title>${escapeHtml(label)} · ${escapeHtml(displayText(row.decision, "-"))} · best ${fmt(row.best, 4)} · selected ${fmt(row.selected, 4)}</title>
+          </g>
+        `;
+      }).join("");
+      const loopChart = loopRows.length ? `
+        <div class="rsvp-sota-head" style="margin-top: 18px;">
+          <div>
+            <div class="rsvp-sota-title">研究闭环审计台</div>
+            <div class="rsvp-sota-note">按时间画真正进入 ledger 的研究方向；绿线=每步 best，赭线=系统 selected，虚线=多划分 accepted best。</div>
+          </div>
+          <div class="rsvp-sota-note">ledger ${displayText(loop.ledger_count, loopRows.length)} · queued ${displayText(loop.queued_count, "-")}</div>
+        </div>
+        <svg class="rsvp-sota-svg" viewBox="0 0 ${width} ${timelineHeight}" role="img" aria-label="RSVP research ledger timeline">
+          ${timelineGrid}
+          <line x1="${timelinePad.left}" x2="${width - timelinePad.right}" y1="${timelineHeight - timelinePad.bottom}" y2="${timelineHeight - timelinePad.bottom}" stroke="rgba(117,91,0,0.16)" />
+          ${timelineSelectedLine ? `<polyline points="${timelineSelectedLine}" fill="none" stroke="rgba(139,96,70,0.56)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />` : ""}
+          ${timelineBestLine ? `<polyline points="${timelineBestLine}" fill="none" stroke="rgba(90,143,121,0.94)" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round" />` : ""}
+          ${timelineRobustLine}
+          ${timelineMarks}
+          <text x="${timelinePad.left}" y="${timelineHeight - 8}" font-size="11" fill="currentColor">oldest</text>
+          <text x="${width - timelinePad.right}" y="${timelineHeight - 8}" text-anchor="end" font-size="11" fill="currentColor">latest</text>
+        </svg>
+      ` : "";
+      const recent = loopRows.length
+        ? loopRows.slice(-6).reverse().map((run) => `
+        <div class="rsvp-sota-run">
+          <strong>${escapeHtml(displayText(run.title, run.track_id || "-"))}</strong>
+          <span>${escapeHtml(displayText(run.decision, "-"))} · best ${escapeHtml(fmt(run.best, 4))} · selected ${escapeHtml(fmt(run.selected, 4))}</span>
+        </div>
+      `).join("")
+        : `<div class="rsvp-sota-run"><strong>固定 sweep archive</strong><span>${escapeHtml(displayText(history?.run_count, 0))} 次旧 run 已隐藏，只保留作归档证据。</span></div>`;
+
+      container.innerHTML = `
+        <div class="rsvp-sota-head">
+          <div>
+            <div class="rsvp-sota-title">候选算法效果图</div>
+            <div class="rsvp-sota-note">每个竖线是一种候选算法：灰点=验证集，绿点=测试集，赭色大点=系统实际选中；虚线=多划分 accepted best。</div>
+          </div>
+          <div class="rsvp-sota-note">candidates ${displayText(rows.length, 0)} · fixed sweep archive ${displayText(history?.run_count, 0)}</div>
+        </div>
+        <svg class="rsvp-sota-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="RSVP candidate algorithm scores">
+          <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
+          ${gridLines}
+          <line x1="${pad.left}" x2="${width - pad.right}" y1="${height - pad.bottom}" y2="${height - pad.bottom}" stroke="rgba(117,91,0,0.16)" />
+          ${robustLine}
+          ${candidateMarks}
+        </svg>
+        ${loopChart}
+        <div class="rsvp-sota-run-list">${recent}</div>
+      `;
+    }
+
+    function renderRsvpShipImage(panelData, isSelected = true) {
+      const container = document.getElementById("rsvp-ship-image");
+      const panel = document.getElementById("rsvp-ship-image-panel");
+      const trajectory = document.getElementById("rsvp-sota-trajectory");
+      if (!container) return;
+      if (!isSelected || !panelData || !panelData.available) {
+        if (panel) panel.style.display = "none";
+        if (trajectory) trajectory.innerHTML = "";
+        return;
+      }
+      if (panel) panel.style.display = "";
+
+      const fact = (label, value, note = "") => `
+        <div class="campaign-benchmark-card">
+          <div class="campaign-fact-label">${escapeHtml(label)}</div>
+          <div class="campaign-fact-value">${escapeHtml(displayText(value, "-"))}</div>
+          <div class="campaign-fact-note">${escapeHtml(displayText(note, "-"))}</div>
+        </div>
+      `;
+      const split = panelData.split_summary || {};
+      const audit = panelData.audit_summary || {};
+      const safety = panelData.safety || {};
+      const plan = panelData.director_plan || {};
+      const overnight = panelData.overnight_status || {};
+      const loop = panelData.research_loop || {};
+      const activeLoop = loop.active_track || {};
+      const activeLoopCommit = activeLoop.commit ? String(activeLoop.commit).slice(0, 7) : "";
+      const activeLoopNote = activeLoopCommit
+        ? `${displayText(activeLoop.track_id, "等待 step")} · commit ${activeLoopCommit}`
+        : (activeLoop.track_id || "等待 step");
+      const scoreStory = panelData.score_story || {};
+      const candidates = Array.isArray(panelData.top_candidates) ? panelData.top_candidates : [];
+      renderRsvpSotaTrajectory(panelData.history || {}, scoreStory, candidates, loop);
+      const splitCopy = ["train", "val", "test"].map(name => {
+        const row = split[name] || {};
+        return `${name}: ${displayText(row.total, 0)} 张，ship=${displayText(row.target, 0)}，not=${displayText(row.nontarget, 0)}`;
+      }).join(" · ");
+      const auditCopy = `唯一图像 ${displayText(audit.labeled_unique_hashes, "-")}，重复 ${displayText(audit.duplicate_labeled_extra_files, 0)}，未标注 allimages hash ${displayText(audit.allimages_unlabeled_hashes, 0)}`;
+      const overnightCycle = overnight.available
+        ? `${displayText(overnight.cycle, "-")}/${displayText(overnight.total_cycles, "-")}`
+        : "-";
+      const overnightNote = overnight.available
+        ? `已归档，不进入主图 · ${displayText(overnight.updated_at_local, overnight.updated_at)}`
+        : "未启动";
+      const candidateRows = candidates.length
+        ? candidates.map((item, index) => `
+          <tr class="${item.selected ? "moonshot-row-best" : ""}">
+            <td class="rank">${index + 1}</td>
+            <td><strong>${escapeHtml(displayText(item.algorithm_label, item.model_family || "-"))}</strong><br><span class="muted">${escapeHtml(displayText(item.model_family, "-"))}</span></td>
+            <td>${escapeHtml(displayText(item.signal_label, item.feature_family || "-"))}</td>
+            <td class="metric">${escapeHtml(fmt(item.val_balanced_accuracy, 4))}</td>
+            <td class="metric">${escapeHtml(fmt(item.test_balanced_accuracy, 4))}</td>
+            <td>${escapeHtml(displayText(item.ship_misses, "-"))}</td>
+            <td>${escapeHtml(displayText(item.nonship_false_alarms, "-"))}</td>
+            <td>${item.selected ? "系统选中" : ""}</td>
+            <td>${escapeHtml(displayText(item.risk_label, "-"))}</td>
+          </tr>
+        `).join("")
+        : `<tr><td colspan="9">当前没有候选模型结果。</td></tr>`;
+
+      container.innerHTML = `
+        <div class="campaign-benchmark-top">
+          <div class="campaign-benchmark-grid">
+            ${fact("Program", panelData.program_id, panelData.status)}
+            ${fact("数据集", panelData.dataset_name, panelData.created_at_local)}
+            ${fact("验证集选择", panelData.selected_model_family, panelData.selected_feature)}
+            ${fact("系统实际选择", fmt(scoreStory.selected_test_balanced_accuracy ?? panelData.test_balanced_accuracy, 4), "selected model test BA")}
+            ${fact("事后测试最高", fmt(scoreStory.per_run_best_test_balanced_accuracy ?? panelData.best_test_balanced_accuracy, 4), panelData.best_test_model_family)}
+            ${fact("稳健 accepted best", scoreStory.robust_accepted_best ? fmt(scoreStory.robust_accepted_best.score, 4) : "尚未形成", scoreStory.robust_accepted_best ? displayText(scoreStory.robust_accepted_best.track_id, "-") : "需要多划分通过")}
+            ${fact("研究闭环", loop.available ? `${displayText(loop.phase, "ready")} · ledger ${displayText(loop.ledger_count, 0)}` : "未启动", activeLoopNote)}
+            ${fact("固定 sweep", overnight.available ? `${displayText(overnight.phase, "-")} · ${overnightCycle}` : "未启动", overnightNote)}
+          </div>
+          <div class="campaign-benchmark-side">
+            <div class="campaign-benchmark-side-title">边界</div>
+            <div class="campaign-benchmark-side-copy">
+              ${escapeHtml(splitCopy)}<br>
+              ${escapeHtml(auditCopy)}<br>
+              ${escapeHtml(displayText(safety.eeg_status, "-"))} · no_cross_modal_claim=${escapeHtml(String(Boolean(safety.no_cross_modal_claim)))}
+              ${overnight.truth_note ? `<br>${escapeHtml(overnight.truth_note)}` : ""}
+            </div>
+          </div>
+        </div>
+        <div class="moonshot-table-wrap">
+          <table class="moonshot-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>候选算法</th>
+                <th>它看什么</th>
+                <th>val BA</th>
+                <th>test BA</th>
+                <th>漏船</th>
+                <th>非船误报</th>
+                <th>选择</th>
+                <th>风险</th>
+              </tr>
+            </thead>
+            <tbody>${candidateRows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
     function renderFrameworkBenchmark(bench) {
       const container = document.getElementById("benchmark-metrics");
       const panel = document.getElementById("framework-benchmark-panel");
@@ -3396,6 +3850,8 @@
     let controlActionPending = false;
     let dashboardDataMode = "live";
     let livePollTimer = null;
+    let selectedDashboardTaskId = "";
+    const TASK_SELECTION_KEY = "autobci.dashboard.selected_task_id";
 
     function firstDefinedText(...values) {
       for (const value of values) {
@@ -3440,6 +3896,84 @@
       return { title, meta, chips };
     }
 
+    function getTaskRegistryTasks(data) {
+      const registry = data?.task_registry || {};
+      return asArray(registry?.tasks).filter((item) => item && item.task_id);
+    }
+
+    function resolveSelectedTask(data) {
+      const registry = data?.task_registry || {};
+      const tasks = getTaskRegistryTasks(data);
+      const fallbackId = firstDefinedText(registry?.default_task_id, tasks[0]?.task_id, "");
+      if (!selectedDashboardTaskId) {
+        const storedTaskId = firstDefinedText(window.localStorage?.getItem(TASK_SELECTION_KEY), "");
+        const storedTask = tasks.find((item) => item.task_id === storedTaskId);
+        selectedDashboardTaskId = storedTask && !storedTask.is_legacy ? storedTaskId : fallbackId;
+      }
+      if (!tasks.some((item) => item.task_id === selectedDashboardTaskId)) {
+        selectedDashboardTaskId = fallbackId;
+      }
+      const selected = tasks.find((item) => item.task_id === selectedDashboardTaskId) || tasks[0] || null;
+      const payload = selected && !selected.is_legacy && selected.payload ? selected.payload : null;
+      return { selected, payload, tasks };
+    }
+
+    function taskScopeForTaskId(taskId) {
+      return taskId === "rsvp_ship_image_only_v0" ? "rsvp" : "legacy";
+    }
+
+    function syncTaskScopedPanels(selectedTaskId) {
+      const scope = taskScopeForTaskId(selectedTaskId);
+      document.body.dataset.selectedTask = selectedTaskId || "";
+      document.body.dataset.taskScope = scope;
+      document.querySelectorAll("[data-task-scope]").forEach((node) => {
+        const scopes = String(node.getAttribute("data-task-scope") || "")
+          .split(/\s+/)
+          .map((item) => item.trim())
+          .filter(Boolean);
+        node.hidden = Boolean(scopes.length) && !scopes.includes(scope) && !scopes.includes("shared");
+      });
+    }
+
+    function renderTaskSwitcher(data, selectedTaskId) {
+      const shell = document.getElementById("task-switcher");
+      if (!shell) return;
+      const tasks = getTaskRegistryTasks(data);
+      if (tasks.length <= 1) {
+        shell.innerHTML = "";
+        return;
+      }
+      shell.innerHTML = tasks.map((task) => {
+        const isActive = task.task_id === selectedTaskId;
+        const history = task.history_config || {};
+        const meta = [
+          displayText(task.kind, "task"),
+          displayText(task.status, "-"),
+          displayText(task.effect_label, "-"),
+          history.run_count != null ? `history ${history.run_count}` : "",
+          displayText(task.updated_at_local, "-"),
+        ].filter((item) => item && item !== "-").join(" · ");
+        return `
+          <button class="task-switcher-button ${isActive ? "active" : ""}" type="button" data-task-id="${escapeHtml(task.task_id)}">
+            <span class="task-switcher-title">${escapeHtml(displayText(task.title, task.task_id))}</span>
+            <span class="task-switcher-meta">${escapeHtml(meta || displayText(task.task_id, "-"))}</span>
+          </button>
+        `;
+      }).join("");
+      shell.querySelectorAll(".task-switcher-button").forEach((button) => {
+        button.addEventListener("click", () => {
+          const taskId = button.getAttribute("data-task-id") || "";
+          if (!taskId) return;
+          selectedDashboardTaskId = taskId;
+          window.localStorage?.setItem(TASK_SELECTION_KEY, taskId);
+          if (latestStatusPayload) {
+            updateStatus(latestStatusPayload);
+            applyDashboardMode();
+          }
+        });
+      });
+    }
+
     function renderCardList(containerId, items, emptyText, renderItem, limit = 6) {
       const shell = document.getElementById(containerId);
       if (!shell) return;
@@ -3476,7 +4010,7 @@
           controlPlane?.flow_note,
           operator?.planner_summary,
           operator?.effect_note,
-          "核心指标、当前执行、Current Campaign、Framework Benchmark 和决策链路共用同一份状态数据。",
+          "任务切换会同步切换历史记录、SOTA 轨迹、队列和产物视图。",
         );
         if (dashboardDataMode === "snapshot" && latestStatusPayload?.exported_at) {
           subtitle.textContent = `当前显示的是只读快照，导出时间 ${displayText(latestStatusPayload?.exported_at_local || formatLocalDateTime(latestStatusPayload?.exported_at), "-")} · ${coreSummary}`;
@@ -4225,11 +4759,11 @@
       };
       if (mainlineNote) {
         mainlineNote.textContent = progress?.available
-          ? `默认显示全部历史；绿色点是当前步态二分类，旧连续预测是背景线。当前筛选：${sourceLabels[window.currentSotaSourceFilter] || "全部"} · ${rangeLabels[window.currentSotaRange] || "全部历史"}。`
+          ? `默认显示全部历史；绿色线始终表示全历史真正刷新的主线，时间范围只裁剪当前可见窗口。当前筛选：${sourceLabels[window.currentSotaSourceFilter] || "全部"} · ${rangeLabels[window.currentSotaRange] || "全部历史"}。`
           : "暂时还没有主线历史点，但参考线会继续保留。";
       }
       if (rmseCoverage) {
-        rmseCoverage.textContent = "可以把新的步态二分类、旧连续预测和参考/支线放在同一张图里切换对照。";
+        rmseCoverage.textContent = "把步态二分类、连续轨迹和关节角这些真实突破串成一条全历史 SOTA 主线。";
       }
       renderMoonshotScoreboard(progress?.moonshot_scoreboard || {});
       renderMainlineMethodSections(progress);
@@ -4244,7 +4778,7 @@
           label: "主指标长期进展",
           digits: 4,
           runningColor: COLORS.running,
-          copy: `默认看全部历史；绿色点是步态二分类，灰蓝线是旧连续预测。最新主线：${displayText(progress?.latest_summary, "还没有真实主线实验点")}`,
+          copy: `默认看全部历史；绿色线只连真正刷新过历史最高的 formal 节点，背景点保留所有尝试。最新主线：${displayText(progress?.latest_summary, "还没有真实主线实验点")}`,
         });
       }
     }
@@ -4693,56 +5227,66 @@
     }
 
     function updateStatus(data) {
+      const taskSelection = resolveSelectedTask(data || {});
+      const activeTask = taskSelection.payload || {};
+      const selectedTaskId = taskSelection.selected?.task_id || "";
+      const isRsvpTask = selectedTaskId === "rsvp_ship_image_only_v0";
       const headline = data?.dashboard_headline || {};
       const operator = data?.operator_summary || {};
       const axisSummary = data?.axis_summary || {};
       const memoryGuard = data?.memory_guard || {};
       const progress = data?.progress || {};
-      const mission = data?.mission_control || data?.control_plane || {};
+      const mission = activeTask?.available ? activeTask : (data?.mission_control || data?.control_plane || {});
       const queueCompiler = data?.queue_compiler || {};
-      document.getElementById("hero-dataset").textContent = displayText(operator.dataset_label || headline.dataset, "-");
-      document.getElementById("hero-method").textContent = displayText(operator.method_label || headline.method, "-");
-      document.getElementById("hero-stage").textContent = displayText(operator.stage_label || headline.stage || progress?.stage, "-");
+      const taskScopedProgress = activeTask?.available ? {} : progress;
+      const taskScopedControlPlane = activeTask?.available ? {} : (data?.control_plane || {});
+      const taskScopedQueueCompiler = activeTask?.available ? {} : queueCompiler;
+      syncTaskScopedPanels(selectedTaskId);
+      renderTaskSwitcher(data || {}, selectedTaskId);
+      document.getElementById("hero-dataset").textContent = displayText(activeTask.dataset_label || operator.dataset_label || headline.dataset, "-");
+      document.getElementById("hero-method").textContent = displayText(activeTask.method_label || operator.method_label || headline.method, "-");
+      document.getElementById("hero-stage").textContent = displayText(activeTask.stage_label || operator.stage_label || headline.stage || progress?.stage, "-");
       const heroTimeEl = document.getElementById("hero-time");
-      if (heroTimeEl) heroTimeEl.textContent = displayText(operator.updated_at_local || headline.time, "-");
+      if (heroTimeEl) heroTimeEl.textContent = displayText(activeTask.updated_at_local || operator.updated_at_local || headline.time, "-");
       document.getElementById("hero-duration").textContent = displayText(operator.duration_label || headline.duration, "-");
-      document.getElementById("hero-effect").textContent = displayText(operator.effect_label || headline.current_effect, "本轮还没有正式效果");
+      document.getElementById("hero-effect").textContent = displayText(activeTask.effect_label || operator.effect_label || headline.current_effect, "本轮还没有正式效果");
       document.getElementById("hero-formal-note").textContent = displayText(
-        operator.effect_note || headline.recent_formal_summary,
+        activeTask.effect_note || operator.effect_note || headline.recent_formal_summary,
         "最近还没有正式结果",
       );
       document.getElementById("hero-effect-source").textContent = displayText(
-        operator.effect_source_label || headline.current_effect_source,
+        activeTask.effect_source_label || operator.effect_source_label || headline.current_effect_source,
         "-",
       );
       document.getElementById("hero-sub").textContent = displayText(
-        mission?.current_task || operator.planner_summary || data?.control_plane?.flow_note || "只看数据集、方法、阶段、时间、时长和最近一次正式效果。",
+        activeTask.summary || mission?.current_task || operator.planner_summary || data?.control_plane?.flow_note || "只看数据集、方法、阶段、时间、时长和最近一次正式效果。",
         "只看数据集、方法、阶段、时间、时长和最近一次正式效果。",
       );
 
-      renderMissionHeader(mission, operator, progress, memoryGuard, data?.control_plane || {});
-      renderTopicInbox(mission, data || {});
-      renderRecommendedQueue(mission, progress, data?.control_plane || {}, queueCompiler);
-      renderSessionSummary(mission, operator, progress, memoryGuard);
-      renderCurrentProblemSummary(mission, data?.control_plane || {});
-      renderTaskConsole(mission, operator, progress, data?.control_plane || {}, queueCompiler);
-      renderControlEvents(mission, data || {});
-      renderResearchTree(mission, data || {});
+      renderMissionHeader(mission, operator, taskScopedProgress, memoryGuard, taskScopedControlPlane);
+      renderTopicInbox(mission, activeTask?.available ? {} : (data || {}));
+      renderRecommendedQueue(mission, taskScopedProgress, taskScopedControlPlane, taskScopedQueueCompiler);
+      renderSessionSummary(mission, activeTask?.available ? activeTask : operator, taskScopedProgress, memoryGuard);
+      renderCurrentProblemSummary(mission, taskScopedControlPlane);
+      renderTaskConsole(mission, operator, taskScopedProgress, taskScopedControlPlane, taskScopedQueueCompiler);
+      renderControlEvents(mission, isRsvpTask ? {} : (data || {}));
+      renderResearchTree(mission, isRsvpTask ? {} : (data || {}));
       renderThinkingTimeline(mission);
-      renderArtifactInspectorSummary(data || {});
-      renderDirectionGrid(axisSummary);
-      renderJointBreakdown(data?.joint_breakdown || {});
-      renderMemoryGuard(memoryGuard);
-      renderMainlineHistory(data?.mainline_progress || {});
-      renderProjection(data?.prediction_projection || {});
+      renderArtifactInspectorSummary(isRsvpTask ? {} : (data || {}));
+      renderDirectionGrid(isRsvpTask ? {} : axisSummary);
+      renderJointBreakdown(isRsvpTask ? {} : (data?.joint_breakdown || {}));
+      renderMemoryGuard(isRsvpTask ? {} : memoryGuard);
+      renderMainlineHistory(isRsvpTask ? {} : (data?.mainline_progress || {}));
+      renderProjection(isRsvpTask ? {} : (data?.prediction_projection || {}));
 
       // New dashboard components
-      const plots = (data?.mainline_progress || {})?.plots || {};
+      const plots = isRsvpTask ? {} : ((data?.mainline_progress || {})?.plots || {});
       renderHealthIndicator(plots);
       renderHeatmapBar(plots?.primary?.day_density, "heatmap-primary");
-      renderPipelineBar(mission?.pipeline_status);
-      renderCurrentCampaignBenchmark(data?.current_campaign_benchmark);
-      renderFrameworkBenchmark(data?.framework_benchmark);
+      renderPipelineBar(activeTask?.available ? null : mission?.pipeline_status);
+      renderCurrentCampaignBenchmark(isRsvpTask ? null : data?.current_campaign_benchmark);
+      renderRsvpShipImage(data?.rsvp_ship_image, isRsvpTask);
+      renderFrameworkBenchmark(isRsvpTask ? null : data?.framework_benchmark);
     }
 
     function setControlButtonsPending(isPending) {
@@ -4776,7 +5320,7 @@
       if (controlActionPending) return;
       const responseBox = document.getElementById("control-response");
       const taskInput = document.getElementById("task-input");
-      const mission = latestStatusPayload?.mission_control || {};
+      const mission = latestStatusPayload?.active_task || latestStatusPayload?.mission_control || {};
       const payload = {};
       if (action === "execute") {
         payload.task = String(taskInput?.value || mission?.current_task || "").trim();
@@ -4841,21 +5385,30 @@
     }
 
     async function loadStatus() {
+      if (window.location.protocol === "file:") {
+        const liveUrl = "http://127.0.0.1:8878/";
+        const note = document.getElementById("hero-formal-note");
+        if (note) {
+          note.textContent = `Dashboard 需要通过本地服务打开，正在跳转到 ${liveUrl}`;
+        }
+        window.location.replace(liveUrl);
+        return;
+      }
       let data = null;
       let mode = "live";
       try {
-        const snapshotResponse = await fetch("status.snapshot.json", { cache: "no-store" });
-        if (snapshotResponse.ok) {
-          data = await snapshotResponse.json();
-          mode = "snapshot";
+        const liveResponse = await fetch("/api/status", { cache: "no-store" });
+        if (liveResponse.ok) {
+          data = await liveResponse.json();
+          mode = "live";
         }
       } catch (error) {
-        console.debug("snapshot unavailable, falling back to live status", error);
+        console.debug("live status unavailable, trying snapshot", error);
       }
       if (!data) {
-        const response = await fetch("/api/status", { cache: "no-store" });
-        data = await response.json();
-        mode = "live";
+        const snapshotResponse = await fetch("status.snapshot.json", { cache: "no-store" });
+        data = await snapshotResponse.json();
+        mode = "snapshot";
       }
       dashboardDataMode = mode;
       latestStatusPayload = data;

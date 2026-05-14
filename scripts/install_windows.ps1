@@ -69,7 +69,7 @@ Invoke-Step "Installing AutoResearch Node dependencies" {
 
 Invoke-Step "Running Windows readiness checks" {
     .\.venv\Scripts\python.exe -m bci_autoresearch.product_shell.cli doctor --json
-    .\.venv\Scripts\python.exe -m bci_autoresearch.product_shell.cli provider test fake
+    .\.venv\Scripts\python.exe -m bci_autoresearch.product_shell.cli windows doctor
 }
 
 Write-Host ""

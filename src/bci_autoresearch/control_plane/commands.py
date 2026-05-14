@@ -737,7 +737,7 @@ def format_status_summary(paths: AutoBciControlPlanePaths | None = None) -> str:
         f"任务：{snapshot.get('campaign_id') or '-'}",
         f"阶段：{snapshot.get('stage') or '-'}",
         f"当前轨：{snapshot.get('current_track_id') or '-'}",
-        f"Agent 状态：{snapshot.get('agent_status') or '-'}",
+        f"运行状态：{snapshot.get('agent_status') or '-'}",
     ]
     if snapshot.get("current_task"):
         lines.append(f"当前任务：{snapshot['current_task']}")
@@ -790,7 +790,7 @@ def build_follow_summary(paths: AutoBciControlPlanePaths | None = None) -> str:
     snapshot = build_status_snapshot(paths)
     lines = [
         f"{snapshot.get('campaign_id') or '当前无任务'} · {snapshot.get('stage') or '-'} · {snapshot.get('current_track_id') or '-'}",
-        f"Agent 状态：{snapshot.get('agent_status') or '-'}",
+        f"运行状态：{snapshot.get('agent_status') or '-'}",
     ]
     thinking_overview = snapshot.get("thinking_overview") or {}
     if thinking_overview.get("last_decision_at") or thinking_overview.get("last_materialization_at"):

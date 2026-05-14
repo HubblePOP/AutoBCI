@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 
-ProviderProtocol = Literal["openai_compatible", "anthropic_compatible", "fake"]
+ProviderProtocol = Literal["pi", "openai_compatible", "anthropic_compatible"]
 
 
 @dataclass(frozen=True)
@@ -17,10 +17,14 @@ class ProviderPreset:
     capabilities: tuple[str, ...]
     capability_profile: dict[str, Any] = field(default_factory=dict)
     extra_body: dict[str, Any] = field(default_factory=dict)
+    pi_provider: str | None = None
+    display_name: str | None = None
+    aliases: tuple[str, ...] = ()
 
     def to_public_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["capabilities"] = list(self.capabilities)
+        payload["aliases"] = list(self.aliases)
         return payload
 
 
@@ -62,91 +66,109 @@ OPENAI_COMPATIBLE_PROFILE = _profile(
 PROVIDER_PRESETS: dict[str, ProviderPreset] = {
     "deepseek": ProviderPreset(
         name="deepseek",
-        protocol="openai_compatible",
-        base_url="https://api.deepseek.com/v1",
+        protocol="pi",
+        base_url="https://api.deepseek.com",
         api_key_env="DEEPSEEK_API_KEY",
-        default_model="deepseek-chat",
-        capabilities=("chat_completions", "json_task"),
+        default_model="deepseek-v4-flash",
+        capabilities=("pi_ai", "json_task"),
         capability_profile=OPENAI_COMPATIBLE_PROFILE,
-        extra_body=_OPENAI_JSON_BODY,
+        extra_body={},
+        pi_provider="deepseek",
+        display_name="DeepSeek",
     ),
     "kimi": ProviderPreset(
         name="kimi",
-        protocol="openai_compatible",
-        base_url="https://api.moonshot.cn/v1",
+        protocol="pi",
+        base_url="https://api.kimi.com/coding",
         api_key_env="KIMI_API_KEY",
-        default_model="moonshot-v1-8k",
-        capabilities=("chat_completions", "json_task"),
+        default_model="kimi-k2-thinking",
+        capabilities=("pi_ai", "json_task"),
         capability_profile=OPENAI_COMPATIBLE_PROFILE,
-        extra_body=_OPENAI_JSON_BODY,
+        extra_body={},
+        pi_provider="kimi-coding",
+        display_name="Kimi",
     ),
     "glm": ProviderPreset(
         name="glm",
-        protocol="openai_compatible",
-        base_url="https://open.bigmodel.cn/api/paas/v4",
-        api_key_env="GLM_API_KEY",
-        default_model="glm-4-plus",
-        capabilities=("chat_completions", "json_task"),
+        protocol="pi",
+        base_url="https://api.z.ai/api/coding/paas/v4",
+        api_key_env="ZAI_API_KEY",
+        default_model="glm-4.7",
+        capabilities=("pi_ai", "json_task"),
         capability_profile=OPENAI_COMPATIBLE_PROFILE,
-        extra_body=_OPENAI_JSON_BODY,
+        extra_body={},
+        pi_provider="zai",
+        display_name="GLM / zAI",
     ),
     "minimax": ProviderPreset(
         name="minimax",
-        protocol="openai_compatible",
-        base_url="https://api.minimax.chat/v1",
+        protocol="pi",
+        base_url="https://api.minimax.io/anthropic",
         api_key_env="MINIMAX_API_KEY",
-        default_model="abab6.5s-chat",
-        capabilities=("chat_completions", "json_task"),
+        default_model="MiniMax-M2.7",
+        capabilities=("pi_ai", "json_task"),
         capability_profile=OPENAI_COMPATIBLE_PROFILE,
-        extra_body=_OPENAI_JSON_BODY,
+        extra_body={},
+        pi_provider="minimax",
+        display_name="MiniMax",
     ),
     "openai": ProviderPreset(
         name="openai",
-        protocol="openai_compatible",
+        protocol="pi",
         base_url="https://api.openai.com/v1",
         api_key_env="OPENAI_API_KEY",
-        default_model="gpt-4o-mini",
-        capabilities=("chat_completions", "json_task"),
+        default_model="gpt-5.5",
+        capabilities=("pi_ai", "json_task"),
         capability_profile=OPENAI_COMPATIBLE_PROFILE,
-        extra_body=_OPENAI_JSON_BODY,
+        extra_body={},
+        pi_provider="openai",
+        display_name="OpenAI",
     ),
     "anthropic": ProviderPreset(
         name="anthropic",
-        protocol="anthropic_compatible",
+        protocol="pi",
         base_url="https://api.anthropic.com/v1",
         api_key_env="ANTHROPIC_API_KEY",
-        default_model="claude-3-5-sonnet-latest",
-        capabilities=("messages",),
-        capability_profile=_profile(
-            chat=True,
-            json_schema=False,
-            tool_calls="not_enabled_in_this_slice",
-            streaming=False,
-            reasoning="provider_dependent",
-            context="provider_default",
-            coding_suitability="declared_not_live",
-        ),
-        extra_body={},
-    ),
-    "fake": ProviderPreset(
-        name="fake",
-        protocol="fake",
-        base_url="fake://local",
-        api_key_env=None,
-        default_model="fake-json-v1",
-        capabilities=("json_task", "edit_turn"),
+        default_model="claude-sonnet-4-20250514",
+        capabilities=("pi_ai", "json_task"),
         capability_profile=_profile(
             chat=True,
             json_schema=True,
-            tool_calls="deterministic_json_actions",
+            tool_calls="pi_ai_tools_available_not_used",
             streaming=False,
-            reasoning="none",
-            context="local_test",
-            coding_suitability="ci_smoke",
+            reasoning="provider_dependent",
+            context="provider_default",
+            coding_suitability="smoke_supported",
         ),
         extra_body={},
+        pi_provider="anthropic",
+        display_name="Anthropic",
+    ),
+    "xiaomi": ProviderPreset(
+        name="xiaomi",
+        protocol="pi",
+        base_url="https://api.xiaomimimo.com/anthropic",
+        api_key_env="XIAOMI_API_KEY",
+        default_model="mimo-v2-pro",
+        capabilities=("pi_ai", "json_task"),
+        capability_profile=OPENAI_COMPATIBLE_PROFILE,
+        extra_body={},
+        pi_provider="xiaomi",
+        display_name="Xiaomi MiMo",
+        aliases=("mimo", "xiaomi-mimo"),
     ),
 }
+
+PROVIDER_ALIASES: dict[str, str] = {
+    alias: name
+    for name, preset in PROVIDER_PRESETS.items()
+    for alias in preset.aliases
+}
+
+
+def normalize_provider_name(name: str) -> str:
+    key = str(name or "").strip().lower()
+    return PROVIDER_ALIASES.get(key, key)
 
 
 def list_provider_presets() -> list[str]:
@@ -154,7 +176,7 @@ def list_provider_presets() -> list[str]:
 
 
 def get_provider_preset(name: str) -> ProviderPreset:
-    key = str(name or "").strip().lower()
+    key = normalize_provider_name(name)
     try:
         return PROVIDER_PRESETS[key]
     except KeyError as exc:
